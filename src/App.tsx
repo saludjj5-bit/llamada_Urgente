@@ -10,6 +10,9 @@ import AdminPanel from './components/AdminPanel';
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
+  const [emailInput, setEmailInput] = useState('');
+  const [passInput, setPassInput] = useState('');
+  const [user, setUser] = useState<User | null>(null);
   const [userRole, setUserRole] = useState<UserRole | null>(null);
   const [userGroupId, setUserGroupId] = useState<string | null>(null);
   const [userGroupName, setUserGroupName] = useState<string | null>(null);
@@ -226,13 +229,20 @@ export default function App() {
     }
   };
   const handleSignIn = async () => {
+    if (!emailInput || !passInput) {
+      setAuthError("Ingresa tu correo y contraseña.");
+      return;
+    }
+    setIsAuthLoading(true);
     try {
       setAuthError(null);
-      await signIn();
+      await signIn(emailInput, passInput);
     } catch (err: any) {
       setAuthError(err.message);
+      setIsAuthLoading(false);
     }
   };
+
 
   const handleToggleConnection = () => {
     if (isConnected) {
@@ -321,25 +331,39 @@ export default function App() {
             </div>
           )}
 
-          <div className="space-y-3">
+          <div className="space-y-3 text-left">
+            <input 
+              type="email" 
+              placeholder="Correo electrónico" 
+              value={emailInput}
+              onChange={(e) => setEmailInput(e.target.value)}
+              className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-gray-900"
+            />
+            <input 
+              type="password" 
+              placeholder="Contraseña" 
+              value={passInput}
+              onChange={(e) => setPassInput(e.target.value)}
+              className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-gray-900 shadow-sm"
+            />
+            
             <button
               onClick={handleSignIn}
-              className="w-full py-4 bg-blue-600 text-white font-bold rounded-2xl flex items-center justify-center gap-3 hover:bg-blue-700 transition-all shadow-lg shadow-blue-500/20"
+              className="w-full py-4 mt-2 bg-blue-600 text-white font-bold rounded-2xl flex items-center justify-center gap-3 hover:bg-blue-700 transition-all shadow-lg shadow-blue-500/20"
             >
               <LogIn className="w-5 h-5" />
-              {authError ? "Intentar con otra cuenta" : "Entrar con Google"}
+              Entrar
             </button>
             
             {authError && (
               <button
-                onClick={logOut}
-                className="w-full py-2 text-gray-400 hover:text-gray-600 text-xs font-bold uppercase tracking-widest"
+                onClick={() => { setAuthError(null); setEmailInput(''); setPassInput(''); logOut(); setIsAuthLoading(false); }}
+                className="w-full py-2 text-gray-400 hover:text-gray-600 text-xs font-bold uppercase tracking-widest text-center"
               >
-                Cerrar Sesión
+                Limpiar Error y Cancelar
               </button>
             )}
           </div>
-        </motion.div>
       </div>
     );
   }
