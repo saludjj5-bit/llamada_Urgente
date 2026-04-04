@@ -1,0 +1,5 @@
+{
+  "name": "LLAMADA DE EMERGENCIA",
+  "description": "A real-time, voice-activated walkie-talkie powered by Gemini 3.1 Flash Live. Press to talk and hear instant responses.",
+  "requestFramePermissions": ["microphone"]
+}

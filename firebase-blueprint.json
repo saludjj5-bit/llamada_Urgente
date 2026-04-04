@@ -1,0 +1,78 @@
+{
+  "entities": {
+    "users": {
+      "title": "User Profile",
+      "description": "User profile with role-based access control.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "The unique identifier for the user."
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "The user's email address."
+        },
+        "displayName": {
+          "type": "string",
+          "description": "The user's display name."
+        },
+        "role": {
+          "type": "string",
+          "enum": ["admin", "admin2", "usuario"],
+          "description": "The user's role in the system."
+        },
+        "groupId": {
+          "type": "string",
+          "description": "The ID of the group the user belongs to."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the user profile was created."
+        }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "groups": {
+      "title": "Group",
+      "description": "A group of users.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "The unique identifier for the group."
+        },
+        "name": {
+          "type": "string",
+          "description": "The name of the group."
+        },
+        "description": {
+          "type": "string",
+          "description": "A brief description of the group."
+        },
+        "parentGroupId": {
+          "type": "string",
+          "description": "The ID of the parent group (for sub-groups created by ADMIN2)."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the group was created."
+        }
+      },
+      "required": ["id", "name"]
+    }
+  },
+  "firestore": {
+    "users/{userId}": {
+      "schema": "users",
+      "description": "Collection of user profiles."
+    },
+    "groups/{groupId}": {
+      "schema": "groups",
+      "description": "Collection of groups."
+    }
+  }
+}
