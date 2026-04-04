@@ -7,7 +7,8 @@ import { auth, signIn, logOut, db, UserRole, handleFirestoreError, OperationType
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { doc, onSnapshot, updateDoc, collection } from 'firebase/firestore';
 import AdminPanel from './components/AdminPanel';
-import { ForegroundService } from '@capgo/capacitor-foreground-service';
+// LIBRERIA CORREGIDA:
+import { ForegroundService } from '@capawesome/capacitor-android-foreground-service';
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -41,16 +42,16 @@ export default function App() {
   useEffect(() => {
     let wakeLock: any = null;
     const activateSecureBackground = async () => {
-      try { await ForegroundService.start({ id: 112, title: "Emergencia COE", body: "Radio activa permanente" }); } catch (err) { }
+      // INSTRUCCION NATIVA CORREGIDA:
+      try { await ForegroundService.startForegroundService({ id: 112, title: "Emergencia COE", body: "Radio activa permanente" }); } catch (err) { }
       try { if ('wakeLock' in navigator) wakeLock = await (navigator as any).wakeLock.request('screen'); } catch (err) { }
     };
     if (isConnected) activateSecureBackground();
-    else try { ForegroundService.stop(); } catch(err){}
+    else try { ForegroundService.stopForegroundService(); } catch(err){}
     
     return () => { if (wakeLock !== null) wakeLock.release().catch(() => {}); }
   }, [isConnected]);
 
-  // RECONEXION A PRUEBA DE FALLOS
   useEffect(() => {
     const forceReconnect = () => { if (document.visibilityState === 'visible' && !isConnected && activeGroupId) connect(); };
     document.addEventListener('visibilitychange', forceReconnect);
@@ -136,7 +137,6 @@ export default function App() {
 
   const handleToggleConnection = () => { isConnected ? disconnect() : connect(); };
 
-  // MAGIA TOGGLE: 1 CLIC HABLA, 1 CLIC CORTA
   const handleToggleTalk = async () => {
     if (!isConnected) return;
     if (isPressed) {
@@ -198,7 +198,6 @@ export default function App() {
         </div>
         <div className="flex items-center gap-2">
           {userRole === UserRole.ADMIN && (<button onClick={() => setIsMonitorOpen(!isMonitorOpen)} className={cn("p-3 rounded-2xl border transition-all", isMonitorOpen ? "bg-red-600 text-white border-red-600" : "bg-white text-gray-400 border-gray-200")}><Radio className="w-5 h-5" /></button>)}
-          {/* BOTON DE HISTORIAL RECUPERADO */}
           {(userRole === UserRole.ADMIN || userRole === UserRole.ADMIN2) && (<button onClick={() => setIsHistoryOpen(true)} className="p-3 rounded-2xl bg-white border border-gray-200 text-gray-400"><Volume2 className="w-5 h-5" /></button>)}
           {(userRole === UserRole.ADMIN || userRole === UserRole.ADMIN2) && (<button onClick={() => setIsAdminPanelOpen(true)} className="p-3 rounded-2xl bg-white border border-gray-200 text-gray-400"><Settings className="w-5 h-5" /></button>)}
           <button onClick={logOut} className="p-3 rounded-2xl bg-white border border-gray-200 text-gray-400"><LogOut className="w-5 h-5" /></button>
@@ -241,7 +240,6 @@ export default function App() {
       <div className="relative w-full max-w-md flex flex-col items-center gap-8 mt-16">
         <div className="text-center space-y-2">
           <h1 className="text-4xl font-black tracking-tighter text-gray-900 uppercase">EMERGENCIA</h1>
-          {/* EL TITULO DE GRUPO SIEMPRE EN ROJO: */}
           <motion.div className="inline-flex items-center gap-3 px-6 py-2.5 rounded-2xl text-white mx-auto bg-red-600 shadow-lg shadow-red-500/30">
             <Radio className="w-5 h-5 animate-pulse" />
             <span className="text-sm font-black uppercase">{isMonitorOpen ? "Frecuencia COE" : (userGroupName || "Sin Grupo")}</span>
@@ -250,20 +248,18 @@ export default function App() {
 
         <div className="relative w-72 h-[450px] bg-gray-50 rounded-[60px] border-[8px] border-gray-100 shadow-2xl flex flex-col items-center p-6">
           <div className="w-full h-32 bg-white rounded-3xl border border-gray-100 p-4 shadow-inner flex flex-col items-center justify-center gap-2 mt-8 relative overflow-hidden">
-            
-            {/* RADAR INTELIGENTE MODO ADMIN */}
             {isMonitorOpen ? (
-              <div className="absolute inset-0 bg-gray-900 p-2 overflow-y-auto">
-                 <h3 className="text-white text-[8px] uppercase font-bold border-b border-gray-700 pb-1 mb-1">Radar Global de Interceptación</h3>
+              <div className="absolute inset-0 bg-gray-900 p-3 overflow-y-auto w-full rounded-[20px]">
+                 <h3 className="text-white text-[8px] uppercase font-black border-b border-gray-700 pb-1 mb-2">📡 Radar Global Activo</h3>
                  {allGroups.map(g => {
                      const talkers = allUsers.filter(u => u.groupId === g.id && u.isTalking);
                      return (
-                         <div key={g.id} className="flex items-center justify-between py-1 border-b border-gray-800">
-                             <div className="flex flex-col">
+                         <div key={g.id} className="flex flex-col py-1 border-b border-gray-800">
+                             <div className="flex items-center justify-between w-full">
                                 <span className="text-gray-300 font-bold text-[10px] uppercase truncate max-w-[120px]">{g.name}</span>
-                                {talkers.map(t => <span key={t.uid} className="text-red-500 font-black text-[9px] animate-pulse">Hablando: {t.displayName}</span>)}
+                                {talkers.length > 0 && <Mic className="w-3 h-3 text-red-500 animate-pulse flex-shrink-0" />}
                              </div>
-                             {talkers.length > 0 && <Mic className="w-3 h-3 text-red-500 animate-pulse" />}
+                             {talkers.map(t => <span key={t.uid} className="text-red-500 font-black text-[9px] animate-pulse">AL AIRE: {t.displayName}</span>)}
                          </div>
                      )
                  })}
@@ -285,10 +281,10 @@ export default function App() {
             <button
                 onClick={handleToggleTalk}
                 disabled={!isConnected}
-                className={cn("w-28 h-28 rounded-full border-4 flex flex-col items-center justify-center gap-2 transition-all shadow-xl", isPressed ? "bg-red-600 border-red-400" : "bg-blue-600 border-white/10")}
+                className={cn("w-28 h-28 rounded-full flex flex-col items-center justify-center gap-2 transition-all shadow-xl", isPressed ? "bg-red-600 scale-95" : "bg-blue-600")}
               >
                 {isTalking ? <Mic className="w-10 h-10 text-white animate-pulse" /> : <MicOff className="w-10 h-10 text-white/40" />}
-                <span className="text-[10px] items-center text-white font-black overflow-hidden flex flex-col">{isPressed ? "AL AIRE" : "1 CLIC HABLAR"}</span>
+                <span className="text-[10px] items-center text-white font-black overflow-hidden flex flex-col">{isPressed ? "AL AIRE" : "TOCAR PARA HABLAR"}</span>
             </button>
             <div className="flex items-center gap-4">
               <button onClick={handleToggleConnection} className="p-3 rounded-2xl bg-white border border-gray-200"><Power className="w-5 h-5 text-gray-400" /></button>
