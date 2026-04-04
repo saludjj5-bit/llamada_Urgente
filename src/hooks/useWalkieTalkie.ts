@@ -51,7 +51,7 @@ export function useWalkieTalkie(groupId: string | null, onNewRecording?: (data: 
     if (!groupId) return;
     
     // Explicitly use current origin and default path
-    const socket = io('https://tu-enlace-de-render.onrender.com', {
+    const socket = io('https://llamada-urgente-2.onrender.com', {
       path: '/socket.io',
       transports: ['websocket', 'polling'],
       reconnection: true,
