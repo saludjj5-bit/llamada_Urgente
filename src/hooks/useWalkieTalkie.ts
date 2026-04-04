@@ -16,7 +16,6 @@ export function useWalkieTalkie(groupId: string | null, onNewRecording?: (data: 
   const isPlayingRef = useRef(false);
   const nextStartTimeRef = useRef(0);
 
-  // --- TRUCO PARA DESBLOQUEAR EL AUDIO EN CELULARES ---
   useEffect(() => {
     const unlockAudio = () => {
       if (!audioContextRef.current) {
@@ -26,7 +25,6 @@ export function useWalkieTalkie(groupId: string | null, onNewRecording?: (data: 
         audioContextRef.current.resume();
       }
     };
-    // El primer toque en la pantalla encenderá la bocina lógicamente
     document.addEventListener('touchstart', unlockAudio, { once: true });
     document.addEventListener('click', unlockAudio, { once: true });
     return () => {
@@ -39,6 +37,7 @@ export function useWalkieTalkie(groupId: string | null, onNewRecording?: (data: 
     if (audioQueueRef.current.length === 0 || !audioContextRef.current) {
       isPlayingRef.current = false;
       setIsReceiving(false);
+      nextStartTimeRef.current = 0; // RESET DE SINCRONIZACIÓN PARA EVITAR SORDERA
       return;
     }
 
@@ -58,25 +57,27 @@ export function useWalkieTalkie(groupId: string | null, onNewRecording?: (data: 
     source.connect(audioContextRef.current.destination);
     
     const currentTime = audioContextRef.current.currentTime;
-    const startTime = Math.max(currentTime, nextStartTimeRef.current);
+    if (nextStartTimeRef.current < currentTime) {
+      nextStartTimeRef.current = currentTime;
+    }
     
-    source.start(startTime);
-    nextStartTimeRef.current = startTime + buffer.duration;
+    source.start(nextStartTimeRef.current);
+    nextStartTimeRef.current += buffer.duration;
     
-    source.onended = () => {
-      playNextInQueue();
-    };
+    source.onended = () => { playNextInQueue(); };
   }, []);
 
   const connect = useCallback(() => {
     if (!groupId) return;
+    if (socketRef.current?.connected) return; // Prevenir multi-conexiones
     
     const socket = io('https://llamada-urgente-2.onrender.com', {
       path: '/socket.io',
       transports: ['websocket', 'polling'],
       reconnection: true,
-      reconnectionAttempts: 5,
-      reconnectionDelay: 1000
+      reconnectionAttempts: Infinity, // INTENTOS ILIMITADOS PARA SEGUNDO PLANO
+      reconnectionDelay: 1000,
+      timeout: 20000
     });
     
     socketRef.current = socket;
@@ -89,19 +90,15 @@ export function useWalkieTalkie(groupId: string | null, onNewRecording?: (data: 
 
     socket.on('connect_error', (err) => {
       setIsConnected(false);
-      setError(`Error de conexión: ${err.message}`);
+      setError(`Reconectando red...`);
     });
 
-    socket.on('reconnect', () => {
-      setError(null);
-    });
+    socket.on('reconnect', () => { setError(null); });
 
     socket.on('audio-receive', ({ data }) => {
       if (!audioContextRef.current) {
         audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
-        nextStartTimeRef.current = audioContextRef.current.currentTime;
       }
-      
       if (audioContextRef.current.state === 'suspended') {
         audioContextRef.current.resume();
       }
@@ -113,9 +110,7 @@ export function useWalkieTalkie(groupId: string | null, onNewRecording?: (data: 
       }
 
       audioQueueRef.current.push(float32Data);
-      if (!isPlayingRef.current) {
-        playNextInQueue();
-      }
+      if (!isPlayingRef.current) { playNextInQueue(); }
     });
 
     socket.on('new-recording', (data) => {
@@ -126,9 +121,7 @@ export function useWalkieTalkie(groupId: string | null, onNewRecording?: (data: 
       setIsConnected(false);
     });
 
-    return () => {
-      socket.disconnect();
-    };
+    return () => { socket.disconnect(); };
   }, [groupId, playNextInQueue, onNewRecording]);
 
   const startTalking = async (userId: string, displayName: string) => {
@@ -154,7 +147,6 @@ export function useWalkieTalkie(groupId: string | null, onNewRecording?: (data: 
         for (let i = 0; i < inputData.length; i++) {
           pcmData[i] = Math.max(-1, Math.min(1, inputData[i])) * 0x7FFF;
         }
-        
         socketRef.current?.emit('audio-data', { groupId, data: pcmData.buffer });
       };
 
@@ -187,9 +179,7 @@ export function useWalkieTalkie(groupId: string | null, onNewRecording?: (data: 
       if (!audioContextRef.current) {
         audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
       }
-      if (audioContextRef.current.state === 'suspended') {
-        await audioContextRef.current.resume();
-      }
+      if (audioContextRef.current.state === 'suspended') await audioContextRef.current.resume();
 
       const response = await fetch(`https://llamada-urgente-2.onrender.com/api/recordings/play/${encodeURIComponent(filename)}`);
       if (!response.ok) throw new Error(`Failed to fetch`);
@@ -200,10 +190,7 @@ export function useWalkieTalkie(groupId: string | null, onNewRecording?: (data: 
       for (let i = 0; i < pcmData.length; i++) float32Data[i] = pcmData[i] / 32768.0;
 
       audioQueueRef.current.push(float32Data);
-      if (!isPlayingRef.current) {
-        nextStartTimeRef.current = audioContextRef.current.currentTime;
-        playNextInQueue();
-      }
+      if (!isPlayingRef.current) playNextInQueue();
     } catch (err) {
       setError("Error al reproducir la grabación.");
     }
