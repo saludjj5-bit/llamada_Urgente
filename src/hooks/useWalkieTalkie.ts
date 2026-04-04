@@ -51,7 +51,7 @@ export function useWalkieTalkie(groupId: string | null, onNewRecording?: (data: 
     if (!groupId) return;
     
     // Explicitly use current origin and default path
-    const socket = io(window.location.origin, {
+    const socket = io('https://tu-enlace-de-render.onrender.com', {
       path: '/socket.io',
       transports: ['websocket', 'polling'],
       reconnection: true,
@@ -160,7 +160,12 @@ export function useWalkieTalkie(groupId: string | null, onNewRecording?: (data: 
       processorRef.current = null;
     }
     if (sourceRef.current) {
-      sourceRef.current.mediaStream.getTracks().forEach(t => t.stop());
+      // Apagar hardware de micrófono
+      sourceRef.current.mediaStream.getTracks().forEach(t => {
+        t.stop();
+        t.enabled = false;
+      });
+      sourceRef.current.disconnect();
       sourceRef.current = null;
     }
     if (socketRef.current) {
@@ -168,6 +173,7 @@ export function useWalkieTalkie(groupId: string | null, onNewRecording?: (data: 
     }
     setIsTalking(false);
   }, []);
+
 
   const playRecording = useCallback(async (filename: string) => {
     try {
