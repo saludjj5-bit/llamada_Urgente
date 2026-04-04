@@ -12,16 +12,38 @@ export function useWalkieTalkie(groupId: string | null, onNewRecording?: (data: 
   const processorRef = useRef<ScriptProcessorNode | null>(null);
   const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   
-  // Playback queue
   const audioQueueRef = useRef<Float32Array[]>([]);
   const isPlayingRef = useRef(false);
   const nextStartTimeRef = useRef(0);
+
+  // --- TRUCO PARA DESBLOQUEAR EL AUDIO EN CELULARES ---
+  useEffect(() => {
+    const unlockAudio = () => {
+      if (!audioContextRef.current) {
+        audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
+      }
+      if (audioContextRef.current.state === 'suspended') {
+        audioContextRef.current.resume();
+      }
+    };
+    // El primer toque en la pantalla encenderá la bocina lógicamente
+    document.addEventListener('touchstart', unlockAudio, { once: true });
+    document.addEventListener('click', unlockAudio, { once: true });
+    return () => {
+      document.removeEventListener('touchstart', unlockAudio);
+      document.removeEventListener('click', unlockAudio);
+    };
+  }, []);
 
   const playNextInQueue = useCallback(() => {
     if (audioQueueRef.current.length === 0 || !audioContextRef.current) {
       isPlayingRef.current = false;
       setIsReceiving(false);
       return;
+    }
+
+    if (audioContextRef.current.state === 'suspended') {
+      audioContextRef.current.resume();
     }
 
     isPlayingRef.current = true;
@@ -35,7 +57,6 @@ export function useWalkieTalkie(groupId: string | null, onNewRecording?: (data: 
     source.buffer = buffer;
     source.connect(audioContextRef.current.destination);
     
-    // Schedule playback for gapless audio
     const currentTime = audioContextRef.current.currentTime;
     const startTime = Math.max(currentTime, nextStartTimeRef.current);
     
@@ -50,7 +71,6 @@ export function useWalkieTalkie(groupId: string | null, onNewRecording?: (data: 
   const connect = useCallback(() => {
     if (!groupId) return;
     
-    // Explicitly use current origin and default path
     const socket = io('https://llamada-urgente-2.onrender.com', {
       path: '/socket.io',
       transports: ['websocket', 'polling'],
@@ -65,22 +85,14 @@ export function useWalkieTalkie(groupId: string | null, onNewRecording?: (data: 
       setIsConnected(true);
       setError(null);
       socket.emit('join-group', groupId);
-      console.log('Connected to walkie-talkie server:', socket.id);
     });
 
     socket.on('connect_error', (err) => {
-      console.error('Socket connection error:', err);
       setIsConnected(false);
       setError(`Error de conexión: ${err.message}`);
     });
 
-    socket.on('reconnect_attempt', (attempt) => {
-      console.log('Reconnection attempt:', attempt);
-      setError(`Intentando reconectar... (${attempt})`);
-    });
-
-    socket.on('reconnect', (attempt) => {
-      console.log('Reconnected after', attempt, 'attempts');
+    socket.on('reconnect', () => {
       setError(null);
     });
 
@@ -89,8 +101,11 @@ export function useWalkieTalkie(groupId: string | null, onNewRecording?: (data: 
         audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
         nextStartTimeRef.current = audioContextRef.current.currentTime;
       }
+      
+      if (audioContextRef.current.state === 'suspended') {
+        audioContextRef.current.resume();
+      }
 
-      // data is an ArrayBuffer of Int16 PCM
       const pcmData = new Int16Array(data);
       const float32Data = new Float32Array(pcmData.length);
       for (let i = 0; i < pcmData.length; i++) {
@@ -116,7 +131,7 @@ export function useWalkieTalkie(groupId: string | null, onNewRecording?: (data: 
     };
   }, [groupId, playNextInQueue, onNewRecording]);
 
-  const startTalking = useCallback(async (userId: string, displayName: string) => {
+  const startTalking = async (userId: string, displayName: string) => {
     if (!isConnected || !socketRef.current || !groupId) return;
 
     try {
@@ -124,35 +139,32 @@ export function useWalkieTalkie(groupId: string | null, onNewRecording?: (data: 
       if (!audioContextRef.current) {
         audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
       }
+      if (audioContextRef.current.state === 'suspended') {
+        audioContextRef.current.resume();
+      }
       
       socketRef.current.emit('audio-start', { groupId, userId, displayName });
 
       sourceRef.current = audioContextRef.current.createMediaStreamSource(stream);
-      // Using a smaller buffer for lower latency
       processorRef.current = audioContextRef.current.createScriptProcessor(2048, 1, 1);
 
       processorRef.current.onaudioprocess = (e) => {
         const inputData = e.inputBuffer.getChannelData(0);
-        // Convert Float32 to Int16 PCM
         const pcmData = new Int16Array(inputData.length);
         for (let i = 0; i < inputData.length; i++) {
           pcmData[i] = Math.max(-1, Math.min(1, inputData[i])) * 0x7FFF;
         }
         
-        socketRef.current?.emit('audio-data', {
-          groupId,
-          data: pcmData.buffer
-        });
+        socketRef.current?.emit('audio-data', { groupId, data: pcmData.buffer });
       };
 
       sourceRef.current.connect(processorRef.current);
       processorRef.current.connect(audioContextRef.current.destination);
       setIsTalking(true);
     } catch (err) {
-      console.error("Mic error:", err);
       setError("No se pudo acceder al micrófono.");
     }
-  }, [isConnected, groupId]);
+  };
 
   const stopTalking = useCallback(() => {
     if (processorRef.current) {
@@ -160,11 +172,7 @@ export function useWalkieTalkie(groupId: string | null, onNewRecording?: (data: 
       processorRef.current = null;
     }
     if (sourceRef.current) {
-      // Apagar hardware de micrófono
-      sourceRef.current.mediaStream.getTracks().forEach(t => {
-        t.stop();
-        t.enabled = false;
-      });
+      sourceRef.current.mediaStream.getTracks().forEach(t => { t.stop(); t.enabled = false; });
       sourceRef.current.disconnect();
       sourceRef.current = null;
     }
@@ -174,37 +182,29 @@ export function useWalkieTalkie(groupId: string | null, onNewRecording?: (data: 
     setIsTalking(false);
   }, []);
 
-
   const playRecording = useCallback(async (filename: string) => {
     try {
       if (!audioContextRef.current) {
         audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
       }
-      
       if (audioContextRef.current.state === 'suspended') {
         await audioContextRef.current.resume();
       }
 
-      const response = await fetch(`/api/recordings/play/${encodeURIComponent(filename)}`);
-      if (!response.ok) throw new Error(`Failed to fetch recording: ${response.status}`);
+      const response = await fetch(`https://llamada-urgente-2.onrender.com/api/recordings/play/${encodeURIComponent(filename)}`);
+      if (!response.ok) throw new Error(`Failed to fetch`);
       
       const arrayBuffer = await response.arrayBuffer();
-      console.log(`Fetched recording: ${filename}, size: ${arrayBuffer.byteLength} bytes`);
-      
       const pcmData = new Int16Array(arrayBuffer);
       const float32Data = new Float32Array(pcmData.length);
-      for (let i = 0; i < pcmData.length; i++) {
-        float32Data[i] = pcmData[i] / 32768.0;
-      }
+      for (let i = 0; i < pcmData.length; i++) float32Data[i] = pcmData[i] / 32768.0;
 
-      console.log(`Decoded PCM data: ${float32Data.length} samples`);
       audioQueueRef.current.push(float32Data);
       if (!isPlayingRef.current) {
         nextStartTimeRef.current = audioContextRef.current.currentTime;
         playNextInQueue();
       }
     } catch (err) {
-      console.error("Playback error:", err);
       setError("Error al reproducir la grabación.");
     }
   }, [playNextInQueue]);
@@ -225,15 +225,5 @@ export function useWalkieTalkie(groupId: string | null, onNewRecording?: (data: 
     }
   }, [groupId, connect]);
 
-  return {
-    isConnected,
-    isTalking,
-    isReceiving,
-    error,
-    connect,
-    disconnect,
-    startTalking,
-    stopTalking,
-    playRecording
-  };
+  return { isConnected, isTalking, isReceiving, error, connect, disconnect, startTalking, stopTalking, playRecording };
 }
