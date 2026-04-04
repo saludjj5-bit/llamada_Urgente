@@ -29,9 +29,49 @@ export default function App() {
 
   const handleNewRecording = useCallback((newRec: any) => {
     if (isHistoryOpen) {
-      setRecordings(prev => [newRec, ...prev]);
+      setRecordings((prev: any[]) => [newRec, ...prev]);
     }
   }, [isHistoryOpen]);
+
+  // --- MANTENIMIENTO DEL SEGUNDO PLANO (COE) ---
+  useEffect(() => {
+    let wakeLock: any = null;
+    const requestWakeLock = async () => {
+      try {
+        if ('wakeLock' in navigator) {
+          wakeLock = await (navigator as any).wakeLock.request('screen');
+        }
+      } catch (err) { }
+    };
+    
+    // Fantasma Web (1ms WAV Loop)
+    const silentAudio = new Audio("data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA");
+    silentAudio.loop = true;
+    silentAudio.volume = 0.01;
+    
+    const activateCOEMode = () => {
+      silentAudio.play().catch(() => {});
+      requestWakeLock();
+      document.removeEventListener('touchstart', activateCOEMode);
+      document.removeEventListener('click', activateCOEMode);
+    };
+    
+    document.addEventListener('touchstart', activateCOEMode);
+    document.addEventListener('click', activateCOEMode);
+    
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') requestWakeLock();
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibility);
+      document.removeEventListener('touchstart', activateCOEMode);
+      document.removeEventListener('click', activateCOEMode);
+      if (wakeLock !== null) wakeLock.release().catch(() => {});
+    };
+  }, []);
+  // ----------------------------------------------
 
   const {
     isConnected,
@@ -127,6 +167,7 @@ export default function App() {
 
   useEffect(() => {
     const handleVisibilityChange = async () => {
+      // Modificado para no matar el status de Talking prematuramente.
       if (document.visibilityState === 'hidden' && isPressed) {
         setIsPressed(false);
         if (user) {
@@ -137,7 +178,7 @@ export default function App() {
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, [isPressed, user]);
+  }, [isPressed, user, stopTalking]);
 
   useEffect(() => {
     return () => {
