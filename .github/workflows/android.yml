@@ -1,57 +1,55 @@
-name: Fabricar App Android
+name: Android Build
 on:
-  workflow_dispatch:
   push:
-    branches: [ main ]
-
+    branches:
+      - main
 jobs:
   build:
+    name: Build APK
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
       - name: Setup Node
         uses: actions/setup-node@v4
-        with: { node-version: '20' }
-      
-      - name: Instalar y Compilar Web
-        run: |
-          npm install
-          npm run build
-          
-      - name: Convertir a App Movil COE MC
-        run: |
-          npm install @capacitor/core @capacitor/android
-          npm install -D @capacitor/cli
-          # Aquí cambiamos el nombre en el sistema a COE MC:
-          npx cap init "COE MC" "com.emergencias.app" --web-dir dist
-          npx cap add android
-          
+        with:
+          node-version: '20'
+      - name: Install dependencies
+        run: npm install
+      - name: Build Web App
+        run: npm run build
+      - name: Install Capacitor CLI
+        run: npm install -g @capacitor/cli
       - name: Generar Icono Rojo Gigante
         run: |
           npm install -D @capacitor/assets
           mkdir -p assets
-          # Dibujar letras aplastantes de tamaño 340
           echo '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024"><rect width="1024" height="1024" fill="#D00000"/><text x="512" y="470" font-family="sans-serif" font-size="340" font-weight="900" fill="white" text-anchor="middle">COE</text><text x="512" y="800" font-family="sans-serif" font-size="340" font-weight="900" fill="white" text-anchor="middle">MC</text></svg>' > assets/icon.svg
           echo '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2732 2732"><rect width="2732" height="2732" fill="#D00000"/><text x="1366" y="1150" font-family="sans-serif" font-size="500" font-weight="900" fill="white" text-anchor="middle">COE</text><text x="1366" y="1750" font-family="sans-serif" font-size="500" font-weight="900" fill="white" text-anchor="middle">MC</text></svg>' > assets/splash.svg
           npx capacitor-assets generate --android
-          npx cap sync android
-          
-      - name: Preparar JAVA
-        uses: actions/setup-java@v4
-        with: { java-version: '21', distribution: 'temurin' }
-
-      - name: Arreglar conflicto de Kotlin
+      - name: Add Android Platform
         run: |
-          echo "subprojects { configurations.configureEach { exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk7'; exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk8' } }" >> android/build.gradle
-          
-      - name: Construir archivo APK
+          npx cap add android
+      - name: NATIVO - Inyectar Permisos de Supervivencia Absoluta
+        run: |
+          sed -i '/<\/manifest>/i \    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" \/>\n    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" \/>\n    <uses-permission android:name="android.permission.WAKE_LOCK" \/>' android/app/src/main/AndroidManifest.xml
+          sed -i '/<application/a \        android:foregroundServiceType="microphone"' android/app/src/main/AndroidManifest.xml
+      - name: Update Capacitor
+        run: npx cap sync android
+      - name: Build Debug APK
         run: |
           cd android
-          chmod +x gradlew
           ./gradlew assembleDebug
-          
-      - name: Entregar App Lista
+      - name: Rename APK
+        run: |
+          mv android/app/build/outputs/apk/debug/app-debug.apk COE-MC-Seguridad.apk
+      - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: COE-MC-App.apk
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          name: COE-MC-Seguridad-APK
+          path: COE-MC-Seguridad.apk
