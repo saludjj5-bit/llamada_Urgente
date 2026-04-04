@@ -28,7 +28,7 @@ jobs:
           
       - name: Preparar JAVA
         uses: actions/setup-java@v4
-        with: { java-version: '17', distribution: 'temurin' }
+        with: { java-version: '21', distribution: 'temurin' }
         
       - name: Construir archivo APK
         run: |
