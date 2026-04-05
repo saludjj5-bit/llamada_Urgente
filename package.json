@@ -13,7 +13,7 @@
   "dependencies": {
     "@capacitor/android": "^6.0.0",
     "@capacitor/core": "^6.0.0",
-npm install @capacitor-community/foreground-service
+    "@capawesome/capacitor-android-foreground-service": "^6.0.0",
     "cors": "^2.8.5",
     "express": "^4.21.2",
     "firebase": "^11.3.1",
