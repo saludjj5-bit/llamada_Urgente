@@ -5,6 +5,14 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 3000,
-    host: true
+    host: true,
+    allowedHosts: ['llamada-urgente-2.onrender.com', '.onrender.com'],
+    proxy: {
+      '/socket.io': {
+        target: 'https://llamada-urgente-2.onrender.com',
+        ws: true,
+        changeOrigin: true
+      }
+    }
   }
 })
