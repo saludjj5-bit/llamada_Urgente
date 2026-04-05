@@ -2,10 +2,9 @@ import express from "express";
 import cors from "cors";
 import { createServer } from "http";
 import { Server } from "socket.io";
-import { createServer as createViteServer } from "vite";
 import path from "path";
-import { fileURLToPath } from "url";
 import fs from "fs";
+import { fileURLToPath } from "url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -28,18 +27,39 @@ function rotateRecordings() {
 
 async function startServer() {
   const app = express();
-  app.use(cors());
+  app.use(cors({
+    origin: '*',
+    methods: ['GET', 'POST', 'DELETE'],
+    credentials: true
+  }));
+  
   const httpServer = createServer(app);
-  const io = new Server(httpServer, { maxHttpBufferSize: 1e8, pingTimeout: 60000, pingInterval: 25000, cors: { origin: "*", methods: ["GET", "POST"] } });
+  const io = new Server(httpServer, { 
+    maxHttpBufferSize: 1e8, 
+    pingTimeout: 60000, 
+    pingInterval: 25000, 
+    cors: { 
+      origin: "*", 
+      methods: ["GET", "POST"] 
+    } 
+  });
+  
   const PORT = process.env.PORT || 3000;
-  const activeRecordings = new Map<string, { groupId: string, userId: string, displayName: string, chunks: Buffer[] }>();
+  const activeRecordings = new Map();
 
   app.get("/api/recordings/:groupId", (req, res) => {
     const { groupId } = req.params;
     try {
       const files = fs.readdirSync(RECORDINGS_DIR).filter(name => groupId === 'all' || name.includes(`_${groupId}_`)).map(name => {
           const parts = name.replace(".raw", "").split("_");
-          return { filename: name, timestamp: parseInt(parts[0]), groupId: parts[1], userId: parts[2], displayName: decodeURIComponent(parts.slice(3).join("_") || "Usuario"), size: fs.statSync(path.join(RECORDINGS_DIR, name)).size };
+          return { 
+            filename: name, 
+            timestamp: parseInt(parts[0]), 
+            groupId: parts[1], 
+            userId: parts[2], 
+            displayName: decodeURIComponent(parts.slice(3).join("_") || "Usuario"), 
+            size: fs.statSync(path.join(RECORDINGS_DIR, name)).size 
+          };
         }).sort((a, b) => b.timestamp - a.timestamp);
       res.json(files);
     } catch (err) { res.status(500).json({ error: "Failed to list recordings" }); }
@@ -52,19 +72,32 @@ async function startServer() {
 
   app.delete("/api/recordings/:filename", (req, res) => {
     const filePath = path.join(RECORDINGS_DIR, req.params.filename);
-    try { if (fs.existsSync(filePath)) { fs.unlinkSync(filePath); res.json({ success: true }); } } catch (err) { }
+    try { if (fs.existsSync(filePath)) { fs.unlinkSync(filePath); res.json({ success: true }); } } catch (err) { res.status(500).json({ error: "Delete failed" }); }
   });
 
   io.on("connection", (socket) => {
-    socket.on("join-group", (groupId) => { socket.join(groupId); });
-    socket.on("leave-group", (groupId) => { socket.leave(groupId); });
-    socket.on("audio-start", ({ groupId, userId, displayName }) => { activeRecordings.set(socket.id, { groupId, userId, displayName: encodeURIComponent(displayName || "Usuario"), chunks: [] }); });
+    console.log("Cliente conectado:", socket.id);
+    
+    socket.on("join-group", (groupId) => { 
+      socket.join(groupId); 
+      console.log(`Socket ${socket.id} unido a grupo: ${groupId}`);
+    });
+    
+    socket.on("leave-group", (groupId) => { 
+      socket.leave(groupId); 
+    });
+    
+    socket.on("audio-start", ({ groupId, userId, displayName }) => { 
+      activeRecordings.set(socket.id, { groupId, userId, displayName: encodeURIComponent(displayName || "Usuario"), chunks: [] }); 
+    });
+    
     socket.on("audio-data", ({ groupId, data }) => {
       socket.to(groupId).emit("audio-receive", { userId: socket.id, data });
       socket.to("global-monitor").emit("audio-receive", { userId: socket.id, data });
       const recording = activeRecordings.get(socket.id);
       if (recording) recording.chunks.push(Buffer.from(data));
     });
+    
     socket.on("audio-end", () => {
       const recording = activeRecordings.get(socket.id);
       if (recording && recording.chunks.length > 0) {
@@ -72,20 +105,21 @@ async function startServer() {
         const filename = `${timestamp}_${recording.groupId}_${recording.userId}_${recording.displayName}.raw`;
         const filePath = path.join(RECORDINGS_DIR, filename);
         fs.writeFileSync(filePath, Buffer.concat(recording.chunks));
-        activeRecordings.delete(socket.id); rotateRecordings();
+        activeRecordings.delete(socket.id); 
+        rotateRecordings();
         io.to(recording.groupId).emit("new-recording", { filename, timestamp, userId: recording.userId, displayName: decodeURIComponent(recording.displayName) });
       }
     });
-    socket.on("disconnect", () => { activeRecordings.delete(socket.id); });
+    
+    socket.on("disconnect", () => { 
+      activeRecordings.delete(socket.id);
+      console.log("Cliente desconectado:", socket.id);
+    });
   });
 
-  if (process.env.NODE_ENV !== "production") {
-    const vite = await createViteServer({ server: { middlewareMode: true }, appType: "spa" });
-    app.use(vite.middlewares);
-  } else {
-    app.use(express.static(path.join(process.cwd(), 'dist')));
-    app.get('*', (req, res) => res.sendFile(path.join(process.cwd(), 'dist', 'index.html')));
-  }
-  httpServer.listen(PORT, "0.0.0.0", () => { console.log(`Server running`); });
+  app.get("/", (req, res) => { res.send("Servidor WebSocket funcionando correctamente"); });
+
+  httpServer.listen(PORT, "0.0.0.0", () => { console.log(`Servidor corriendo en puerto ${PORT}`); });
 }
+
 startServer();
