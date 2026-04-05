@@ -71,7 +71,7 @@ export function useWalkieTalkie(groupId: string | null, onNewRecording?: (data: 
     if (!groupId) return;
     if (socketRef.current?.connected) return; // Prevenir multi-conexiones
     
-    const socket = io('https://llamada-urgente-2.onrender.com', {
+    const SOCKET_URL = io('https://llamada-urgente-2.onrender.com', {
       path: '/socket.io',
       transports: ['websocket', 'polling'],
       reconnection: true,
