@@ -7,8 +7,6 @@ import { auth, signIn, logOut, db, UserRole, handleFirestoreError, OperationType
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { doc, onSnapshot, updateDoc, collection } from 'firebase/firestore';
 import AdminPanel from './components/AdminPanel';
-// LIBRERIA CORREGIDA:
-import { ForegroundService } from '@capawesome/capacitor-android-foreground-service';
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -42,14 +40,19 @@ export default function App() {
   useEffect(() => {
     let wakeLock: any = null;
     const activateSecureBackground = async () => {
-      // INSTRUCCION NATIVA CORREGIDA:
-      try { await ForegroundService.startForegroundService({ id: 112, title: "Emergencia COE", body: "Radio activa permanente" }); } catch (err) { }
-      try { if ('wakeLock' in navigator) wakeLock = await (navigator as any).wakeLock.request('screen'); } catch (err) { }
+      // INSTRUCCION NATIVA CORREGIDA - ELIMINADO FOREGROUND SERVICE INEXISTENTE
+      // Los permisos ya están en AndroidManifest.xml gracias al workflow
+      try { 
+        if ('wakeLock' in navigator) wakeLock = await (navigator as any).wakeLock.request('screen'); 
+      } catch (err) { 
+        console.log("WakeLock no soportado:", err);
+      }
     };
     if (isConnected) activateSecureBackground();
-    else try { ForegroundService.stopForegroundService(); } catch(err){}
     
-    return () => { if (wakeLock !== null) wakeLock.release().catch(() => {}); }
+    return () => { 
+      if (wakeLock !== null) wakeLock.release().catch(() => {}); 
+    }
   }, [isConnected]);
 
   useEffect(() => {
