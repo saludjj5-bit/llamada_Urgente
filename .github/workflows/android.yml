@@ -10,21 +10,30 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
           java-version: '17'
+      
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - name: Install dependencies
-        run: npm install
+          cache: 'npm'
+      
+      - name: Clean install dependencies
+        run: |
+          rm -rf node_modules package-lock.json
+          npm install --legacy-peer-deps
+      
       - name: Build Web App
         run: npm run build
+      
       - name: Install Capacitor CLI
         run: npm install -g @capacitor/cli
+      
       - name: Generar Icono Rojo Gigante
         run: |
           npm install -D @capacitor/assets
@@ -32,22 +41,27 @@ jobs:
           echo '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024"><rect width="1024" height="1024" fill="#D00000"/><text x="512" y="470" font-family="sans-serif" font-size="340" font-weight="900" fill="white" text-anchor="middle">COE</text><text x="512" y="800" font-family="sans-serif" font-size="340" font-weight="900" fill="white" text-anchor="middle">MC</text></svg>' > assets/icon.svg
           echo '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2732 2732"><rect width="2732" height="2732" fill="#D00000"/><text x="1366" y="1150" font-family="sans-serif" font-size="500" font-weight="900" fill="white" text-anchor="middle">COE</text><text x="1366" y="1750" font-family="sans-serif" font-size="500" font-weight="900" fill="white" text-anchor="middle">MC</text></svg>' > assets/splash.svg
           npx capacitor-assets generate --android
+      
       - name: Add Android Platform
-        run: |
-          npx cap add android
+        run: npx cap add android
+      
       - name: NATIVO - Inyectar Permisos de Supervivencia Absoluta
         run: |
           sed -i '/<\/manifest>/i \    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" \/>\n    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" \/>\n    <uses-permission android:name="android.permission.WAKE_LOCK" \/>' android/app/src/main/AndroidManifest.xml
           sed -i '/<application/a \        android:foregroundServiceType="microphone"' android/app/src/main/AndroidManifest.xml
+      
       - name: Update Capacitor
         run: npx cap sync android
+      
       - name: Build Debug APK
         run: |
           cd android
+          chmod +x gradlew
           ./gradlew assembleDebug
+      
       - name: Rename APK
-        run: |
-          mv android/app/build/outputs/apk/debug/app-debug.apk COE-MC-Seguridad.apk
+        run: mv android/app/build/outputs/apk/debug/app-debug.apk COE-MC-Seguridad.apk
+      
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
