@@ -85,8 +85,8 @@ export default function App() {
           await ForegroundService.requestPermissions();
           await ForegroundService.start({ 
             id: 101, 
-            title: 'COE MC - TERMINAL ACTIVA', 
-            body: isMonitoringAll ? 'ESCUCHANDO TODOS LOS GRUPOS' : `CANAL: ${userGroupName || 'Principal'}`, 
+            title: 'COE - SISTEMA ACTIVO', 
+            body: isMonitoringAll ? 'RADIO ESCUCHA GLOBAL' : (userGroupName ? `CANAL: ${userGroupName}` : 'STANDBY'), 
             importance: 5,
             smallIcon: 'ic_stat_radio'
           });
@@ -101,13 +101,13 @@ export default function App() {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.key === 'VolumeUp' || e.key === 'VolumeDown') && isConnected && !isTransmitting) {
         e.preventDefault();
-        handleToggleTalk();
+        handleStartPTT();
       }
     };
     const handleKeyUp = (e: KeyboardEvent) => {
       if ((e.key === 'VolumeUp' || e.key === 'VolumeDown') && isTransmitting) {
         e.preventDefault();
-        handleToggleTalk();
+        handleStopPTT();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -118,27 +118,63 @@ export default function App() {
     };
   }, [isConnected, isTransmitting, talkMode, activeGroupId]);
 
-  const handleToggleTalk = async () => {
-    if (!isConnected || !user) return;
-    const audio = document.querySelector('audio');
-    if (audio) audio.play().catch(() => {});
-
-    if (!isTransmitting) {
-      setIsTransmitting(true);
-      try {
-        await updateDoc(doc(db, 'users', user.uid), { isTalking: true });
-        let targetId = activeGroupId || userGroupId!;
-        if (talkMode === 'global' && isAdmin) targetId = 'all';
-        if (talkMode === 'private' && selectedPrivateUser) targetId = selectedPrivateUser.uid;
-        startTalking(user.uid, user.displayName || user.email?.split('@')[0] || "Usuario", targetId);
-      } catch { setIsTransmitting(false); }
-    } else {
-      setIsTransmitting(false);
-      try {
-        await updateDoc(doc(db, 'users', user.uid), { isTalking: false });
-        stopTalking();
-      } catch {}
+  const handleStartPTT = async (e?: React.MouseEvent | React.TouchEvent) => {
+    if (e) { 
+      e.preventDefault(); 
+      e.stopPropagation(); 
     }
+    if (!isConnected || !user || isTransmitting) return;
+
+    // Force unlock audio on every PTT start just in case
+    const audio = document.querySelector('audio');
+    if (audio) {
+      audio.play().then(() => {
+        audio.pause();
+        audio.currentTime = 0;
+      }).catch(() => {});
+    }
+    
+    setIsTransmitting(true);
+    try {
+      await updateDoc(doc(db, 'users', user.uid), { isTalking: true });
+      let targetId = activeGroupId || userGroupId!;
+      if (talkMode === 'global' && isAdmin) targetId = 'all';
+      if (talkMode === 'private' && selectedPrivateUser) targetId = selectedPrivateUser.uid;
+      startTalking(user.uid, user.displayName || user.email?.split('@')[0] || "Usuario", targetId);
+    } catch { setIsTransmitting(false); }
+  };
+
+  // Global Audio Unlocker
+  useEffect(() => {
+    const unlock = () => {
+      const audio = document.querySelector('audio');
+      if (audio) {
+        audio.play().then(() => {
+          audio.pause();
+          audio.currentTime = 0;
+          console.log("Audio Unlocked");
+          window.removeEventListener('click', unlock);
+          window.removeEventListener('touchstart', unlock);
+        }).catch(() => {});
+      }
+    };
+    window.addEventListener('click', unlock);
+    window.addEventListener('touchstart', unlock);
+    return () => {
+      window.removeEventListener('click', unlock);
+      window.removeEventListener('touchstart', unlock);
+    };
+  }, []);
+
+  const handleStopPTT = async (e?: React.MouseEvent | React.TouchEvent) => {
+    if (e) { e.preventDefault(); e.stopPropagation(); }
+    if (!isTransmitting || !user) return;
+
+    setIsTransmitting(false);
+    try {
+      await updateDoc(doc(db, 'users', user.uid), { isTalking: false });
+      stopTalking();
+    } catch {}
   };
 
   useEffect(() => {
@@ -312,10 +348,11 @@ export default function App() {
                 </AnimatePresence>
 
                 <button
-                    onMouseDown={handleToggleTalk}
-                    onMouseUp={handleToggleTalk}
-                    onTouchStart={handleToggleTalk}
-                    onTouchEnd={handleToggleTalk}
+                    onMouseDown={handleStartPTT}
+                    onMouseUp={handleStopPTT}
+                    onMouseLeave={handleStopPTT}
+                    onTouchStart={handleStartPTT}
+                    onTouchEnd={handleStopPTT}
                     disabled={!isConnected}
                     className={cn(
                         "w-60 h-60 sm:w-96 sm:h-96 rounded-full relative z-10 flex flex-col items-center justify-center gap-4 transition-all shadow-[0_0_60px_rgba(0,0,0,0.8)] active:scale-95 border-[12px] overflow-hidden",
@@ -385,17 +422,17 @@ export default function App() {
                 >
                     {u.isTalking && <div className="absolute top-0 right-0 p-1 bg-green-600 text-[6px] font-black text-white px-2 rounded-bl-lg animate-pulse">TRANSMITIENDO</div>}
                     <div className="flex items-center gap-3 min-w-0">
-                        <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center font-black text-white relative shadow-inner", u.role === UserRole.ADMIN ? "bg-amber-600" : "bg-blue-600")}>
+                        <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center font-black text-white relative shadow-inner", u.isOnline ? "bg-blue-600 shadow-blue-900/30" : "bg-slate-600 opacity-50")}>
                             {u.displayName?.[0]}
                             {/* Blue/Grey Status Dot */}
-                            <div className={cn("absolute -top-1 -right-1 w-3 h-3 rounded-full border-2 border-slate-900 shadow-lg", u.isOnline ? "bg-blue-500 animate-pulse" : "bg-slate-600")} />
+                            <div className={cn("absolute -top-1 -right-1 w-3 h-3 rounded-full border-2 border-slate-900 shadow-lg", u.isOnline ? "bg-blue-500 animate-pulse" : "bg-slate-500")} />
                         </div>
                         <div className="text-left min-w-0">
                             <div className="flex items-center gap-1.5 min-w-0">
-                                <p className="font-black text-[12px] text-white truncate uppercase tracking-tight">{u.displayName}</p>
+                                <p className={cn("font-black text-[12px] truncate uppercase tracking-tight", u.isOnline ? "text-white" : "text-slate-500")}>{u.displayName}</p>
                                 {u.isOnline && <span className="w-1 h-1 bg-blue-500 rounded-full animate-pulse shrink-0"/>}
                             </div>
-                            <p className="text-[8px] text-slate-600 font-bold uppercase">{u.role}</p>
+                            <p className="text-[8px] text-slate-600 font-bold uppercase">{u.isOnline ? u.role : "DESCONECTADO"}</p>
                         </div>
                     </div>
                 </button>

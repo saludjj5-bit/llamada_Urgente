@@ -203,9 +203,10 @@ export default function AdminPanel({ onClose, userRole, currentGroupId }: AdminP
                               {visibleUsers.map(u => (
                                 <div key={u.uid} className="p-6 glass rounded-2xl flex items-center justify-between group hover:bg-slate-800/40 border-slate-800/50 transition-all">
                                    <div className="flex items-center gap-5">
-                                      <div className={cn("w-14 h-14 rounded-2xl flex items-center justify-center font-black text-white text-xl shadow-lg shadow-black/50 border relative", u.role === UserRole.ADMIN ? "bg-gradient-to-br from-amber-500 to-amber-700 border-amber-400/50" : "bg-gradient-to-br from-blue-500 to-blue-700 border-blue-400/50")}>
+                                      <div className={cn("w-14 h-14 rounded-2xl flex items-center justify-center font-black text-white text-xl shadow-lg shadow-black/50 border relative", u.isOnline ? "bg-blue-600 shadow-blue-900/40 border-blue-400/30" : "bg-slate-700 border-slate-600 opacity-50")}>
                                         {u.displayName?.[0] || 'U'}
-                                        <div className={cn("absolute -top-1 -right-1 w-4 h-4 rounded-full border-2 border-slate-900 shadow-lg", u.isOnline ? "bg-blue-500 animate-pulse" : "bg-slate-600")} />
+                                        {/* Status Dot */}
+                                        <div className={cn("absolute -top-1 -right-1 w-4 h-4 rounded-full border-2 border-slate-900 shadow-lg", u.isOnline ? "bg-blue-500 animate-pulse" : "bg-slate-500")} />
                                       </div>
                                       <div>
                                          {editingUserId === u.uid ? (
