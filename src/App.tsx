@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Radio, Mic, MicOff, LogOut, ShieldCheck, Users, Signal, SignalLow, Loader2, PlayCircle, Clock } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { Radio, Mic, MicOff, LogOut, LogIn, ShieldCheck, Users, Signal, SignalLow, Loader2, PlayCircle, Clock } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useWalkieTalkie } from './hooks/useWalkieTalkie';
 import { cn } from './lib/utils';
 import { auth, signIn, logOut, db, UserRole, UserProfile } from './firebase';
