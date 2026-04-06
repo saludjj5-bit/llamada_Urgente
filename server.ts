@@ -9,6 +9,7 @@ import { fileURLToPath } from "url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const RECORDINGS_DIR = path.join(process.cwd(), "recordings");
+const DIST_DIR = path.join(process.cwd(), "dist");
 const MAX_STORAGE_MB = 1000;
 const MAX_STORAGE_BYTES = MAX_STORAGE_MB * 1024 * 1024;
 
@@ -27,12 +28,19 @@ function rotateRecordings() {
 
 async function startServer() {
   const app = express();
-  app.use(cors({
-    origin: '*',
-    methods: ['GET', 'POST', 'DELETE'],
-    credentials: true
-  }));
   
+  // Middleware de CORS para permitir conexiones desde cualquier origen (necesario para apps de Android)
+  app.use(cors());
+  app.use(express.json());
+
+  // SERVIR ARCHIVOS ESTÁTICOS DE LA APP (DIST)
+  if (fs.existsSync(DIST_DIR)) {
+    app.use(express.static(DIST_DIR));
+    console.log("Carpeta 'dist' cargada y sirviendo archivos estáticos.");
+  } else {
+    console.warn("Carpeta 'dist' no encontrada. Ejecute 'npm run build' primero.");
+  }
+
   const httpServer = createServer(app);
   const io = new Server(httpServer, { 
     maxHttpBufferSize: 1e8, 
@@ -47,9 +55,11 @@ async function startServer() {
   const PORT = process.env.PORT || 3000;
   const activeRecordings = new Map();
 
+  // API para grabaciones
   app.get("/api/recordings/:groupId", (req, res) => {
     const { groupId } = req.params;
     try {
+      if (!fs.existsSync(RECORDINGS_DIR)) return res.json([]);
       const files = fs.readdirSync(RECORDINGS_DIR).filter(name => groupId === 'all' || name.includes(`_${groupId}_`)).map(name => {
           const parts = name.replace(".raw", "").split("_");
           return { 
@@ -75,16 +85,13 @@ async function startServer() {
     try { if (fs.existsSync(filePath)) { fs.unlinkSync(filePath); res.json({ success: true }); } } catch (err) { res.status(500).json({ error: "Delete failed" }); }
   });
 
+  // Lógica de Socket.IO para Walkie-Talkie
   io.on("connection", (socket) => {
     console.log("Cliente conectado:", socket.id);
     
     socket.on("join-group", (groupId) => { 
       socket.join(groupId); 
       console.log(`Socket ${socket.id} unido a grupo: ${groupId}`);
-    });
-    
-    socket.on("leave-group", (groupId) => { 
-      socket.leave(groupId); 
     });
     
     socket.on("audio-start", ({ groupId, userId, displayName }) => { 
@@ -117,9 +124,21 @@ async function startServer() {
     });
   });
 
-  app.get("/", (req, res) => { res.send("Servidor WebSocket funcionando correctamente"); });
+  // FALLBACK PARA SINGLE PAGE APPLICATION (React SPA)
+  app.get("*", (req, res) => {
+    const indexFile = path.join(DIST_DIR, "index.html");
+    if (fs.existsSync(indexFile)) {
+      res.sendFile(indexFile);
+    } else {
+      res.send("Servidor Activo - Frontend (carpeta 'dist') no encontrada.");
+    }
+  });
 
-  httpServer.listen(PORT, "0.0.0.0", () => { console.log(`Servidor corriendo en puerto ${PORT}`); });
+  httpServer.listen(Number(PORT), "0.0.0.0", () => { 
+    console.log(`///////////////////////////////////////////////////`);
+    console.log(`SERVIDO COE MC CORRIENDO EN PUERTO ${PORT}`);
+    console.log(`///////////////////////////////////////////////////`);
+  });
 }
 
 startServer();
