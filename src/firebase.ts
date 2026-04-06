@@ -33,6 +33,7 @@ export interface UserProfile {
   role: UserRole;
   groupId: string | null;
   isTalking?: boolean;
+  isOnline?: boolean;
   createdAt: any;
 }
 

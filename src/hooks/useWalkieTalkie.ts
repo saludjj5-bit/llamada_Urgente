@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { io, Socket } from 'socket.io-client';
+import { doc, updateDoc } from 'firebase/firestore';
+import { db } from '../firebase';
 
 const SOCKET_URL = 'https://llamada-urgente-2.onrender.com';
 
@@ -22,7 +24,7 @@ const getSupportedMimeType = () => {
 
 const MIME_TYPE = getSupportedMimeType();
 
-export const useWalkieTalkie = (groupId: string | null, onNewRecording?: (recording: any) => void) => {
+export const useWalkieTalkie = (groupId: string | null, userId?: string, onNewRecording?: (recording: any) => void) => {
   const [isConnected, setIsConnected] = useState(false);
   const [isTalking, setIsTalking] = useState(false);
   const [isReceiving, setIsReceiving] = useState(false);
@@ -32,61 +34,14 @@ export const useWalkieTalkie = (groupId: string | null, onNewRecording?: (record
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const receivingTimeoutRef = useRef<any>(null);
+  const activeStreamRef = useRef<MediaStream | null>(null);
   
   // Referencias para el streaming de audio recibiendo
   const mediaSourceRef = useRef<MediaSource | null>(null);
   const sourceBufferRef = useRef<SourceBuffer | null>(null);
   const queueRef = useRef<ArrayBuffer[]>([]);
 
-  const connect = useCallback(() => {
-    if (!groupId) return;
-    if (socketRef.current?.connected) socketRef.current.disconnect();
-    
-    const socket = io(SOCKET_URL, { 
-        transports: ['websocket'], 
-        reconnection: true,
-        reconnectionAttempts: Infinity,
-        reconnectionDelay: 1000,
-        timeout: 10000
-    });
-    socketRef.current = socket;
-
-    socket.on('connect', () => { 
-      setIsConnected(true); 
-      setError(null); 
-      socket.emit('join-group', groupId); 
-    });
-    
-    socket.on('disconnect', () => {
-        setIsConnected(false);
-        // Reconectar si el grupo aún es válido (Modo Supervivencia)
-        if (groupId) setTimeout(() => socket.connect(), 1000);
-    });
-
-    // LÓGICA DE RECIBIR AUDIO EN TIEMPO REAL
-    socket.on('audio-receive', async ({ data, groupId: incomingGroupId }) => {
-      if (!data || data.byteLength === 0) return; 
-
-      // Monitoreo Global
-      if (groupId === 'all' && incomingGroupId) {
-         window.dispatchEvent(new CustomEvent('group-talking', { detail: incomingGroupId }));
-      }
-
-      setIsReceiving(true);
-      
-      if (receivingTimeoutRef.current) clearTimeout(receivingTimeoutRef.current);
-      receivingTimeoutRef.current = setTimeout(() => setIsReceiving(false), 1500);
-
-      if (!mediaSourceRef.current || mediaSourceRef.current.readyState !== 'open') initMediaSource();
-      queueRef.current.push(data);
-      appendToBuffer();
-    });
-
-    socket.on('new-recording', (recording) => { if (onNewRecording) onNewRecording(recording); });
-
-  }, [groupId, onNewRecording]);
-
-  const initMediaSource = () => {
+  const initMediaSource = useCallback(() => {
     if (mediaSourceRef.current) {
         try { mediaSourceRef.current.endOfStream(); } catch(e) {}
     }
@@ -95,9 +50,7 @@ export const useWalkieTalkie = (groupId: string | null, onNewRecording?: (record
     mediaSourceRef.current = ms;
     if (audioRef.current) {
         audioRef.current.src = URL.createObjectURL(ms);
-        audioRef.current.play().catch(() => {
-            // Silencio: El sistema espera interacción
-        });
+        audioRef.current.play().catch(() => {});
     }
 
     ms.addEventListener('sourceopen', () => {
@@ -109,13 +62,11 @@ export const useWalkieTalkie = (groupId: string | null, onNewRecording?: (record
         } catch (e) {
           console.error("Error addSourceBuffer:", e);
         }
-      } else {
-        console.error("MIME type NO soportado para reproducción:", MIME_TYPE);
       }
     });
-  };
+  }, []);
 
-  const appendToBuffer = () => {
+  const appendToBuffer = useCallback(() => {
     const sb = sourceBufferRef.current;
     const ms = mediaSourceRef.current;
 
@@ -137,13 +88,60 @@ export const useWalkieTalkie = (groupId: string | null, onNewRecording?: (record
         }
       }
     }
-  };
+  }, [initMediaSource]);
 
   const disconnect = useCallback(() => {
+    if (userId) updateDoc(doc(db, 'users', userId), { isOnline: false, isTalking: false }).catch(() => {});
     if (socketRef.current) { socketRef.current.disconnect(); socketRef.current = null; }
     setIsConnected(false);
     setIsTalking(false);
-  }, []);
+  }, [userId]);
+
+  const connect = useCallback(() => {
+    if (!groupId) return;
+    if (socketRef.current?.connected) socketRef.current.disconnect();
+    
+    const socket = io(SOCKET_URL, { 
+        transports: ['websocket'], 
+        reconnection: true,
+        reconnectionAttempts: Infinity,
+        reconnectionDelay: 1000,
+        timeout: 10000
+    });
+    socketRef.current = socket;
+
+    socket.on('connect', () => { 
+      setIsConnected(true); 
+      setError(null); 
+      socket.emit('join-group', groupId); 
+      if (userId) updateDoc(doc(db, 'users', userId), { isOnline: true }).catch(() => {});
+    });
+    
+    socket.on('disconnect', () => {
+        setIsConnected(false);
+        if (userId) updateDoc(doc(db, 'users', userId), { isOnline: false }).catch(() => {});
+        if (groupId) setTimeout(() => socket.connect(), 1000);
+    });
+
+    socket.on('audio-receive', async ({ data, groupId: incomingGroupId }) => {
+      if (!data || data.byteLength === 0) return; 
+
+      if (groupId === 'all' && incomingGroupId) {
+         window.dispatchEvent(new CustomEvent('group-talking', { detail: incomingGroupId }));
+      }
+
+      setIsReceiving(true);
+      if (receivingTimeoutRef.current) clearTimeout(receivingTimeoutRef.current);
+      receivingTimeoutRef.current = setTimeout(() => setIsReceiving(false), 1500);
+
+      if (!mediaSourceRef.current || mediaSourceRef.current.readyState !== 'open') initMediaSource();
+      queueRef.current.push(data);
+      appendToBuffer();
+    });
+
+    socket.on('new-recording', (recording) => { if (onNewRecording) onNewRecording(recording); });
+
+  }, [groupId, userId, onNewRecording, initMediaSource, appendToBuffer]);
 
   const playTone = (freq: number, duration: number) => {
     try {
@@ -161,16 +159,15 @@ export const useWalkieTalkie = (groupId: string | null, onNewRecording?: (record
     } catch (e) {}
   };
 
-  const startTalking = useCallback((userId: string, displayName: string, overrideGroupId?: string) => {
+  const startTalking = useCallback((userIdLocal: string, displayName: string, overrideGroupId?: string) => {
     const targetGroupId = overrideGroupId || groupId;
     if (!socketRef.current?.connected || !targetGroupId || isTalking) return;
     
-    // Auto-activar audio al hablar
     if (audioRef.current) audioRef.current.play().catch(() => {});
-
     playTone(880, 0.1);
 
     navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
+      activeStreamRef.current = stream;
       const options = MIME_TYPE ? { mimeType: MIME_TYPE } : {};
       const mediaRecorder = new MediaRecorder(stream, options);
       mediaRecorderRef.current = mediaRecorder;
@@ -185,7 +182,7 @@ export const useWalkieTalkie = (groupId: string | null, onNewRecording?: (record
       
       mediaRecorder.start(200);
       setIsTalking(true);
-      socketRef.current?.emit('audio-start', { groupId: targetGroupId, userId, displayName });
+      socketRef.current?.emit('audio-start', { groupId: targetGroupId, userId: userIdLocal, displayName });
     }).catch(e => {
         setError('Error: Active micrófono en ajustes');
     });
@@ -193,9 +190,15 @@ export const useWalkieTalkie = (groupId: string | null, onNewRecording?: (record
 
   const stopTalking = useCallback(() => {
     if (mediaRecorderRef.current) {
-      if (mediaRecorderRef.current.state === 'recording') mediaRecorderRef.current.stop();
-      mediaRecorderRef.current.stream.getTracks().forEach(t => t.stop());
-      mediaRecorderRef.current = null;
+        try {
+            if (mediaRecorderRef.current.state !== 'inactive') mediaRecorderRef.current.stop();
+        } catch (e) {}
+        mediaRecorderRef.current = null;
+    }
+    
+    if (activeStreamRef.current) {
+        activeStreamRef.current.getTracks().forEach(track => track.stop());
+        activeStreamRef.current = null;
     }
 
     playTone(440, 0.08);

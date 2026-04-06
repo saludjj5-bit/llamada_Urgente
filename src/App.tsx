@@ -39,9 +39,12 @@ export default function App() {
   const isAdmin2 = userRole === UserRole.ADMIN2;
   const isAnyAdmin = isAdmin || isAdmin2;
 
-  // Hook Walkie-Talkie
+  // Hook Walkie-Talkie (V9.0: Sincronizado con Usuario)
   const connectionId = isMonitoringAll && isAdmin ? 'all' : (activeGroupId || userGroupId);
-  const { isConnected, isTalking, isReceiving, connect, disconnect, startTalking, stopTalking } = useWalkieTalkie(connectionId);
+  const { isConnected, isTalking, isReceiving, error, connect, disconnect, startTalking, stopTalking } = useWalkieTalkie(
+    connectionId,
+    user?.uid
+  );
 
   // Cargar Grupos para Admin o Sidebar
   useEffect(() => {
@@ -82,8 +85,8 @@ export default function App() {
           await ForegroundService.requestPermissions();
           await ForegroundService.start({ 
             id: 101, 
-            title: 'SISTEMA COE MC - RADIO ACTIVA', 
-            body: isMonitoringAll ? 'Escuchando TODOS los grupos' : `Canal: ${userGroupName || 'Principal'}`, 
+            title: 'COE MC - TERMINAL ACTIVA', 
+            body: isMonitoringAll ? 'ESCUCHANDO TODOS LOS GRUPOS' : `CANAL: ${userGroupName || 'Principal'}`, 
             importance: 5,
             smallIcon: 'ic_stat_radio'
           });
@@ -177,7 +180,7 @@ export default function App() {
       <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="text-center space-y-12 max-w-sm w-full">
         <div className="relative inline-block scale-125">
           <h1 className="text-7xl font-black text-green-500 tracking-tighter italic drop-shadow-[0_0_15px_rgba(34,197,94,0.4)]">COE MC</h1>
-          <div className="absolute -top-6 -right-6 bg-green-500 text-black px-3 py-1 text-[12px] font-black rounded-lg rotate-12 shadow-xl">V7.0</div>
+          <div className="absolute -top-6 -right-6 bg-blue-600 text-white px-3 py-1 text-[12px] font-black rounded-lg rotate-12 shadow-xl">V9.0</div>
         </div>
         <div className="space-y-6 glass p-10 rounded-[2.5rem] border-white/5 shadow-2xl relative">
           <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-blue-600 text-white px-4 py-1 rounded-full text-[10px] font-black tracking-widest">AUTENTICACIÓN</div>
@@ -192,7 +195,7 @@ export default function App() {
   );
 
   return (
-    <div className="h-screen w-full bg-slate-950 text-slate-100 flex overflow-hidden font-['Outfit'] select-none">
+    <div className="h-screen w-full fixed inset-0 bg-slate-950 text-slate-100 flex overflow-hidden font-['Outfit'] select-none">
       
       <AnimatePresence>
         {showAdminPanel && <AdminPanel onClose={() => setShowAdminPanel(false)} userRole={userRole!} currentGroupId={userGroupId} />}
@@ -382,11 +385,16 @@ export default function App() {
                 >
                     {u.isTalking && <div className="absolute top-0 right-0 p-1 bg-green-600 text-[6px] font-black text-white px-2 rounded-bl-lg animate-pulse">TRANSMITIENDO</div>}
                     <div className="flex items-center gap-3 min-w-0">
-                        <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center font-black text-white relative shadow-inner", u.role === UserRole.ADMIN ? "bg-amber-600" : "bg-green-600")}>
+                        <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center font-black text-white relative shadow-inner", u.role === UserRole.ADMIN ? "bg-amber-600" : "bg-blue-600")}>
                             {u.displayName?.[0]}
+                            {/* Blue/Grey Status Dot */}
+                            <div className={cn("absolute -top-1 -right-1 w-3 h-3 rounded-full border-2 border-slate-900 shadow-lg", u.isOnline ? "bg-blue-500 animate-pulse" : "bg-slate-600")} />
                         </div>
                         <div className="text-left min-w-0">
-                            <p className="font-black text-[12px] text-white truncate uppercase tracking-tight">{u.displayName}</p>
+                            <div className="flex items-center gap-1.5 min-w-0">
+                                <p className="font-black text-[12px] text-white truncate uppercase tracking-tight">{u.displayName}</p>
+                                {u.isOnline && <span className="w-1 h-1 bg-blue-500 rounded-full animate-pulse shrink-0"/>}
+                            </div>
                             <p className="text-[8px] text-slate-600 font-bold uppercase">{u.role}</p>
                         </div>
                     </div>

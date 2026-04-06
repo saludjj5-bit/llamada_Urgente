@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Users, FolderPlus, UserPlus, Trash2, Edit3, Shield, Star, LayoutDashboard, ChevronRight, Search, X, Check, Save, Download, FileAudio, Play, History } from 'lucide-react';
+import { Users, FolderPlus, UserPlus, Trash2, Edit3, Shield, Star, X, Check, Download, FileAudio, History } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { db, UserRole, UserProfile, createGroup, deleteGroup, updateGroup, preRegisterUser, deleteUser, updateUserProfile } from '../firebase';
 import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
@@ -17,13 +17,11 @@ export default function AdminPanel({ onClose, userRole, currentGroupId }: AdminP
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [recordings, setRecordings] = useState<any[]>([]);
   
-  // Edición
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
   const [editGroupName, setEditGroupName] = useState('');
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [editUserDisplay, setEditUserDisplay] = useState('');
 
-  // Creación
   const [newGroupName, setNewGroupName] = useState('');
   const [newUserEmail, setNewUserEmail] = useState('');
   const [newUserDisplay, setNewUserDisplay] = useState('');
@@ -40,7 +38,6 @@ export default function AdminPanel({ onClose, userRole, currentGroupId }: AdminP
     return () => { unsubGroups(); unsubUsers(); };
   }, []);
 
-  // Cargar grabaciones
   const fetchRecordings = async () => {
     try {
         const resp = await fetch(`https://llamada-urgente-2.onrender.com/api/recordings/all`);
@@ -95,9 +92,7 @@ export default function AdminPanel({ onClose, userRole, currentGroupId }: AdminP
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-xl">
       <motion.div initial={{ scale: 0.95, y: 20 }} animate={{ scale: 1, y: 0 }} className="bg-slate-900 w-full max-w-6xl h-[90vh] rounded-[2.5rem] border border-slate-800 shadow-2xl flex flex-col overflow-hidden">
-        
         <div className="flex h-full">
-          {/* Categorías Sidebar */}
           <div className="w-20 sm:w-72 border-r border-slate-800 p-8 flex flex-col gap-10 bg-slate-900/50">
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 bg-gradient-to-br from-amber-500 to-amber-700 rounded-2xl flex items-center justify-center shadow-xl shadow-amber-900/40"><Shield className="text-white w-6 h-6"/></div>
@@ -106,7 +101,6 @@ export default function AdminPanel({ onClose, userRole, currentGroupId }: AdminP
                   <p className="text-[10px] text-amber-500 font-bold uppercase tracking-widest mt-1">Operaciones Pro</p>
               </div>
             </div>
-            
             <nav className="flex flex-col gap-3">
               <button onClick={() => setActiveTab('groups')} className={cn("p-4 rounded-2xl flex items-center gap-4 transition-all group", activeTab === 'groups' ? "bg-blue-600 text-white shadow-lg shadow-blue-900/30" : "text-slate-400 hover:bg-slate-800")}>
                 <FolderPlus className={cn("w-6 h-6", activeTab === 'groups' ? "" : "group-hover:text-blue-400")}/> 
@@ -129,13 +123,10 @@ export default function AdminPanel({ onClose, userRole, currentGroupId }: AdminP
                 </>
               )}
             </nav>
-
             <button onClick={onClose} className="mt-auto p-5 rounded-2xl bg-slate-800 border border-slate-700 text-slate-300 hover:bg-slate-700 transition-all flex items-center justify-center gap-3 font-black text-sm uppercase tracking-tighter">
               <X className="w-5 h-5"/> <span className="hidden sm:block">CERRAR PANEL</span>
             </button>
           </div>
-
-          {/* Área de Trabajo */}
           <div className="flex-1 flex flex-col min-w-0 bg-slate-950/30">
              <div className="p-10 overflow-y-auto custom-scrollbar">
                 <AnimatePresence mode="wait">
@@ -151,7 +142,6 @@ export default function AdminPanel({ onClose, userRole, currentGroupId }: AdminP
                                 <button onClick={handleCreateGroup} className="px-10 bg-blue-600 text-white font-black rounded-2xl hover:bg-blue-500 shadow-lg shadow-blue-900/40 transition-all active:scale-95">CREAR GRUPO</button>
                             </div>
                         </section>
-
                         <section className="space-y-6">
                            <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.4em] pl-2">Listado de Grupos Activos</h3>
                            <div className="grid gap-4">
@@ -185,7 +175,6 @@ export default function AdminPanel({ onClose, userRole, currentGroupId }: AdminP
                         </section>
                      </motion.div>
                    )}
-
                    {activeTab === 'users' && (
                      <motion.div key="users" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-10">
                         <section className="space-y-6">
@@ -208,15 +197,15 @@ export default function AdminPanel({ onClose, userRole, currentGroupId }: AdminP
                                 <button onClick={handleRegisterUser} className="sm:col-span-2 py-5 bg-blue-600 text-white font-black rounded-2xl hover:bg-blue-500 shadow-xl shadow-blue-900/30 active:scale-95 transition-all uppercase tracking-widest mt-2">ALTA DE OPERADOR</button>
                             </div>
                         </section>
-
                         <section className="space-y-6">
                            <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.4em] pl-2">Personal Activo en Base</h3>
                            <div className="grid gap-4">
                               {visibleUsers.map(u => (
                                 <div key={u.uid} className="p-6 glass rounded-2xl flex items-center justify-between group hover:bg-slate-800/40 border-slate-800/50 transition-all">
                                    <div className="flex items-center gap-5">
-                                      <div className={cn("w-14 h-14 rounded-2xl flex items-center justify-center font-black text-white text-xl shadow-lg shadow-black/50 border", u.role === UserRole.ADMIN ? "bg-gradient-to-br from-amber-500 to-amber-700 border-amber-400/50" : "bg-gradient-to-br from-blue-500 to-blue-700 border-blue-400/50")}>
+                                      <div className={cn("w-14 h-14 rounded-2xl flex items-center justify-center font-black text-white text-xl shadow-lg shadow-black/50 border relative", u.role === UserRole.ADMIN ? "bg-gradient-to-br from-amber-500 to-amber-700 border-amber-400/50" : "bg-gradient-to-br from-blue-500 to-blue-700 border-blue-400/50")}>
                                         {u.displayName?.[0] || 'U'}
+                                        <div className={cn("absolute -top-1 -right-1 w-4 h-4 rounded-full border-2 border-slate-900 shadow-lg", u.isOnline ? "bg-blue-500 animate-pulse" : "bg-slate-600")} />
                                       </div>
                                       <div>
                                          {editingUserId === u.uid ? (
@@ -239,7 +228,10 @@ export default function AdminPanel({ onClose, userRole, currentGroupId }: AdminP
                                             </div>
                                          ) : (
                                             <>
-                                                <p className="font-black text-slate-100 uppercase text-lg leading-tight">{u.displayName}</p>
+                                                <div className="flex items-center gap-2">
+                                                    <p className="font-black text-slate-100 uppercase text-lg leading-tight">{u.displayName}</p>
+                                                    {u.isOnline && <span className="text-[8px] bg-blue-500/20 text-blue-400 px-2 rounded-full font-black uppercase tracking-tighter">Conectado</span>}
+                                                </div>
                                                 <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">{u.email} • {u.role}</p>
                                             </>
                                          )}
@@ -255,7 +247,6 @@ export default function AdminPanel({ onClose, userRole, currentGroupId }: AdminP
                         </section>
                      </motion.div>
                    )}
-
                    {activeTab === 'recordings' && (
                      <motion.div key="recordings" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-10">
                         <section className="space-y-6">
@@ -263,7 +254,6 @@ export default function AdminPanel({ onClose, userRole, currentGroupId }: AdminP
                                 <History className="text-green-500 w-8 h-8"/>
                                 <h2 className="text-3xl font-black text-white italic tracking-tight uppercase">EVIDENCIAS DE AUDIO</h2>
                             </div>
-                            
                             <div className="space-y-8">
                                 {recordings.length === 0 ? (
                                     <div className="p-20 text-center glass rounded-[3rem] border-white/5">
@@ -271,7 +261,6 @@ export default function AdminPanel({ onClose, userRole, currentGroupId }: AdminP
                                         <p className="text-slate-500 font-black uppercase tracking-[0.2em]">No hay grabaciones recientes</p>
                                     </div>
                                 ) : (
-                                    // Agrupar por canal
                                     Object.entries(
                                         recordings.reduce((acc: any, rec: any) => {
                                             const gName = groups.find(g => g.id === rec.groupId)?.name || 'Canal Desconocido';
@@ -319,7 +308,6 @@ export default function AdminPanel({ onClose, userRole, currentGroupId }: AdminP
                         </section>
                      </motion.div>
                    )}
-
                    {activeTab === 'monitor' && (
                      <motion.div key="monitor" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-10">
                         <div className="p-10 bg-gradient-to-r from-red-600/20 to-transparent border border-red-500/20 rounded-[3rem] relative overflow-hidden">
@@ -332,7 +320,6 @@ export default function AdminPanel({ onClose, userRole, currentGroupId }: AdminP
                            </div>
                            <div className="absolute right-0 top-0 bottom-0 w-64 bg-slate-800/10 -skew-x-12 translate-x-32"/>
                         </div>
-
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pb-10">
                            {groups.map(g => (
                              <div key={g.id} className="p-8 glass rounded-[2.5rem] flex items-center justify-between border-l-[10px] border-l-red-600/30">
