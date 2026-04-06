@@ -34,12 +34,13 @@ export default function App() {
   const [isTransmitting, setIsTransmitting] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
 
-  // Hook Walkie-Talkie
-  const connectionId = isMonitoringAll ? 'all' : (activeGroupId || userGroupId);
-  const { isConnected, isTalking, isReceiving, connect, disconnect, startTalking, stopTalking } = useWalkieTalkie(connectionId);
-
   const isAdmin = userRole === UserRole.ADMIN;
   const isAdmin2 = userRole === UserRole.ADMIN2;
+  const isAnyAdmin = isAdmin || isAdmin2;
+
+  // Hook Walkie-Talkie
+  const connectionId = isMonitoringAll && isAdmin ? 'all' : (activeGroupId || userGroupId);
+  const { isConnected, isTalking, isReceiving, connect, disconnect, startTalking, stopTalking } = useWalkieTalkie(connectionId);
 
   // Cargar Grupos para Admin o Sidebar
   useEffect(() => {
@@ -49,19 +50,27 @@ export default function App() {
 
   // Monitor Global
   useEffect(() => {
+    if (!isAdmin) return;
     const handleGroupTalk = (e: any) => setMonitoringGroup(e.detail);
     window.addEventListener('group-talking', handleGroupTalk);
     return () => window.removeEventListener('group-talking', handleGroupTalk);
-  }, []);
+  }, [isAdmin]);
 
-  // AUTO-CONEXIÓN
+  // AUTO-CONEXIÓN & RECONEXIÓN
   useEffect(() => {
+    let interval: any;
     if (user && connectionId && !isConnected && !isConnecting) {
       setIsConnecting(true);
       connect();
       setTimeout(() => setIsConnecting(false), 2000);
     }
-  }, [user, connectionId, isConnected, connect]);
+    
+    // Intentar mantener viva la conexión si se cae (especialmente en segundo plano)
+    if (user && !isConnected) {
+        interval = setInterval(() => { if (!isConnecting) connect(); }, 5000);
+    }
+    return () => clearInterval(interval);
+  }, [user, connectionId, isConnected, connect, isConnecting]);
 
   // SEGUNDO PLANO ANDROID (AUDIO ACTIVO)
   useEffect(() => {
@@ -69,16 +78,16 @@ export default function App() {
       try {
         const { ForegroundService } = await import('@capawesome-team/capacitor-android-foreground-service');
         if (isConnected) {
-          // Mantener audio activo configurando el servicio como mediaPlayback
+          // Solicitar permiso de notificaciones (requerido para foreground service en Android 13+)
+          await ForegroundService.requestPermissions();
+          
           await ForegroundService.start({ 
             id: 101, 
-            title: isMonitoringAll ? 'MONITOR GLOBAL ACTIVO' : 'SISTEMA DE RADIO COE MC', 
+            title: isMonitoringAll ? 'MODO MONITOR ACTIVO' : 'CONEXIÓN ESTABLE - COE MC', 
             body: 'Escuchando Canal: ' + (userGroupName || 'Principal'), 
-            importance: 3,
+            importance: 5, // Importancia Máxima
             smallIcon: 'ic_stat_radio'
           });
-        } else {
-          await ForegroundService.stop();
         }
       } catch (e) { /* Web Mode */ }
     };
@@ -231,12 +240,12 @@ export default function App() {
             <div className="text-center relative">
                 <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-[12px] font-black text-blue-500 uppercase tracking-[0.5em] mb-2 leading-none">FRECUENCIA OPERATIVA</motion.p>
                 <motion.h1 
-                    key={activeGroupId}
+                    key={activeGroupId || userGroupId}
                     initial={{ y: -10, opacity: 0 }} 
                     animate={{ y: 0, opacity: 1 }}
                     className={cn("text-6xl sm:text-8xl font-black italic tracking-tighter uppercase leading-none break-words", isMonitoringAll ? "text-amber-500 drop-shadow-[0_0_20px_rgba(245,158,11,0.3)]" : "text-white")}
                 >
-                    {isMonitoringAll ? "RADAR GLOBAL" : (allGroups.find(g => g.id === activeGroupId)?.name || "BUSCANDO...")}
+                    {isMonitoringAll ? "RADAR GLOBAL" : (allGroups.find(g => g.id === activeGroupId)?.name || userGroupName || "RADIOPRECISA")}
                 </motion.h1>
                 <div className="flex items-center justify-center gap-4 mt-6">
                     <div className={cn("px-5 py-2 rounded-full font-black text-[12px] tracking-[0.2em] border flex items-center gap-3", isConnected ? "bg-green-600/10 text-green-500 border-green-500/20" : "bg-slate-900 text-slate-500 border-slate-800")}>
@@ -257,16 +266,18 @@ export default function App() {
                 <div className="absolute -top-16 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-slate-900 p-2 rounded-full border border-slate-800 shadow-2xl">
                     <button onClick={() => setTalkMode('group')} className={cn("p-3 rounded-full flex items-center gap-2 transition-all", talkMode === 'group' ? "bg-blue-600 text-white shadow-lg shadow-blue-900/40" : "text-slate-500 hover:text-white")}>
                         <Users className="w-5 h-5"/>
-                        {talkMode === 'group' && <span className="text-[10px] font-black uppercase">Grupo</span>}
+                        {talkMode === 'group' && <span className="text-[10px] font-black uppercase tracking-widest ml-1">Canal</span>}
                     </button>
-                    <button onClick={() => setTalkMode('private')} className={cn("p-3 rounded-full flex items-center gap-2 transition-all", talkMode === 'private' ? "bg-purple-600 text-white shadow-lg shadow-purple-900/40" : "text-slate-500 hover:text-white")}>
-                        <MessageSquare className="w-5 h-5"/>
-                        {talkMode === 'private' && <span className="text-[10px] font-black uppercase">Privado</span>}
-                    </button>
+                    {isAnyAdmin && (
+                        <button onClick={() => setTalkMode('private')} className={cn("p-3 rounded-full flex items-center gap-2 transition-all", talkMode === 'private' ? "bg-purple-600 text-white shadow-lg shadow-purple-900/40" : "text-slate-500 hover:text-white")}>
+                            <MessageSquare className="w-5 h-5"/>
+                            {talkMode === 'private' && <span className="text-[10px] font-black uppercase tracking-widest ml-1">Privado</span>}
+                        </button>
+                    )}
                     {isAdmin && (
                         <button onClick={() => setTalkMode('global')} className={cn("p-3 rounded-full flex items-center gap-2 transition-all", talkMode === 'global' ? "bg-red-600 text-white shadow-lg shadow-red-900/40" : "text-slate-500 hover:text-white")}>
                             <Globe className="w-5 h-5"/>
-                            {talkMode === 'global' && <span className="text-[10px] font-black uppercase">Global</span>}
+                            {talkMode === 'global' && <span className="text-[10px] font-black uppercase tracking-widest ml-1">Global</span>}
                         </button>
                     )}
                 </div>

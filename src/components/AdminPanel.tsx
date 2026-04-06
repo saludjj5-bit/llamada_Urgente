@@ -188,9 +188,22 @@ export default function AdminPanel({ onClose, userRole, currentGroupId }: AdminP
                                       </div>
                                       <div>
                                          {editingUserId === u.uid ? (
-                                            <div className="flex gap-2">
-                                                <input value={editUserDisplay} onChange={e => setEditUserDisplay(e.target.value)} className="p-2 bg-slate-950 border border-blue-500 rounded-lg outline-none font-bold" />
-                                                <button onClick={() => handleUpdateUser(u.uid)} className="p-2 bg-green-600 rounded-lg"><Check className="w-4 h-4 text-white"/></button>
+                                            <div className="flex flex-col gap-2 min-w-[200px]">
+                                                <input value={editUserDisplay} onChange={e => setEditUserDisplay(e.target.value)} className="p-2 bg-slate-950 border border-blue-500 rounded-lg outline-none font-bold text-sm" />
+                                                <div className="space-y-1">
+                                                  <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest pl-1">Mover a Canal:</p>
+                                                  <select 
+                                                    value={u.groupId || ''} 
+                                                    onChange={async (e) => {
+                                                      await updateUserProfile(u.uid, { groupId: e.target.value });
+                                                    }}
+                                                    className="w-full p-2 bg-slate-900 border border-slate-700 rounded-lg text-[11px] font-bold text-blue-400 outline-none focus:border-blue-500"
+                                                  >
+                                                    <option value="">SIN ASIGNAR</option>
+                                                    {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                                                  </select>
+                                                </div>
+                                                <button onClick={() => handleUpdateUser(u.uid)} className="p-2 bg-green-600 rounded-lg self-end hover:bg-green-500 transition-all shadow-lg shadow-green-900/20"><Check className="w-4 h-4 text-white"/></button>
                                             </div>
                                          ) : (
                                             <>
