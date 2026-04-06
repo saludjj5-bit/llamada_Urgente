@@ -37,19 +37,17 @@ export const useWalkieTalkie = (groupId: string | null, onNewRecording?: (record
     socket.on('disconnect', () => setIsConnected(false));
 
     // LÓGICA DE RECIBIR AUDIO EN TIEMPO REAL
-    socket.on('audio-receive', async ({ data }) => {
-      setIsReceiving(true);
-      
-      // Si no hay MediaSource activo, lo inicializamos
-      if (!mediaSourceRef.current || mediaSourceRef.current.readyState !== 'open') {
-        initMediaSource();
+    socket.on('audio-receive', async ({ data, groupId: incomingGroupId }) => {
+      // Monitoreo Global: Notificar qué grupo está hablando si estamos monitoreando todo
+      if (groupId === 'all' && incomingGroupId) {
+         // Notificar a la UI qué grupo está hablando
+         window.dispatchEvent(new CustomEvent('group-talking', { detail: incomingGroupId }));
       }
 
-      // Añadimos el fragmento a la cola para procesarlo cuando el buffer esté libre
+      setIsReceiving(true);
+      if (!mediaSourceRef.current || mediaSourceRef.current.readyState !== 'open') initMediaSource();
       queueRef.current.push(data);
       appendToBuffer();
-      
-      // Feedback visual de recibiendo
       setTimeout(() => setIsReceiving(false), 2000);
     });
 
@@ -70,7 +68,7 @@ export const useWalkieTalkie = (groupId: string | null, onNewRecording?: (record
     }
 
     ms.addEventListener('sourceopen', () => {
-      if (SourceBuffer.isTypeSupported(MIME_TYPE)) {
+      if (MediaSource.isTypeSupported(MIME_TYPE)) {
         const sb = ms.addSourceBuffer(MIME_TYPE);
         sourceBufferRef.current = sb;
         sb.addEventListener('updateend', appendToBuffer);
@@ -100,26 +98,25 @@ export const useWalkieTalkie = (groupId: string | null, onNewRecording?: (record
     setIsTalking(false);
   }, []);
 
-  const startTalking = useCallback((userId: string, displayName: string) => {
-    if (!socketRef.current?.connected || !groupId || isTalking) return;
+  const startTalking = useCallback((userId: string, displayName: string, overrideGroupId?: string) => {
+    const targetGroupId = overrideGroupId || groupId;
+    if (!socketRef.current?.connected || !targetGroupId || isTalking) return;
     
     navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
-      // Usar MediaRecorder con intervalos pequeños para streaming
       const mediaRecorder = new MediaRecorder(stream, { mimeType: MIME_TYPE });
       mediaRecorderRef.current = mediaRecorder;
       
       mediaRecorder.ondataavailable = (event) => {
         if (event.data.size > 0 && socketRef.current?.connected) {
           event.data.arrayBuffer().then(buffer => {
-            socketRef.current?.emit('audio-data', { groupId, data: buffer });
+            socketRef.current?.emit('audio-data', { groupId: targetGroupId, data: buffer });
           });
         }
       };
       
-      // Enviar datos cada 200ms para balancear fluidez y carga
       mediaRecorder.start(200);
       setIsTalking(true);
-      socketRef.current?.emit('audio-start', { groupId, userId, displayName });
+      socketRef.current?.emit('audio-start', { groupId: targetGroupId, userId, displayName });
     }).catch(e => {
         console.error("Error micro:", e);
         setError('Permiso denegado de micrófono');

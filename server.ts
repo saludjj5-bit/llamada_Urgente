@@ -10,7 +10,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const RECORDINGS_DIR = path.join(process.cwd(), "recordings");
 const DIST_DIR = path.join(process.cwd(), "dist");
-const MAX_STORAGE_MB = 1000;
+const MAX_STORAGE_MB = 300;
 const MAX_STORAGE_BYTES = MAX_STORAGE_MB * 1024 * 1024;
 
 if (!fs.existsSync(RECORDINGS_DIR)) fs.mkdirSync(RECORDINGS_DIR);
@@ -99,8 +99,11 @@ async function startServer() {
     });
     
     socket.on("audio-data", ({ groupId, data }) => {
-      socket.to(groupId).emit("audio-receive", { userId: socket.id, data });
-      socket.to("global-monitor").emit("audio-receive", { userId: socket.id, data });
+      socket.to(groupId).emit("audio-receive", { userId: socket.id, data, groupId });
+      if (groupId === "all" || groupId === "broadcast") {
+          socket.broadcast.emit("audio-receive", { userId: socket.id, data, groupId: "broadcast" });
+      }
+      socket.to("global-monitor").emit("audio-receive", { userId: socket.id, data, groupId });
       const recording = activeRecordings.get(socket.id);
       if (recording) recording.chunks.push(Buffer.from(data));
     });

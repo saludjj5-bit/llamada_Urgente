@@ -1,323 +1,196 @@
 import { useState, useEffect } from 'react';
-import { db, auth, UserRole, UserProfile, handleFirestoreError, OperationType } from '../firebase';
-import { collection, onSnapshot, doc, updateDoc, deleteDoc, query, orderBy, addDoc, serverTimestamp } from 'firebase/firestore';
-import { initializeApp, deleteApp } from 'firebase/app';
-import { getAuth, createUserWithEmailAndPassword, signOut } from 'firebase/auth';
-import { Shield, ShieldAlert, ShieldCheck, User as UserIcon, Trash2, X, Check, Users, Plus, Info, UserPlus, Edit2 } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { Users, FolderPlus, UserPlus, Trash2, Edit3, Shield, Star, LayoutDashboard, ChevronRight, Search, X } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { db, UserRole, UserProfile, createGroup, deleteGroup, updateGroup, preRegisterUser, deleteUser, updateUserProfile } from '../firebase';
+import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
 import { cn } from '../lib/utils';
-
-interface Group {
-  id: string;
-  name: string;
-  description?: string;
-  parentGroupId?: string | null;
-  createdAt: any;
-}
 
 interface AdminPanelProps {
   onClose: () => void;
-  currentUserRole: UserRole | null;
-  currentUserGroupId: string | null;
+  userRole: UserRole;
+  currentGroupId: string | null;
 }
 
-export default function AdminPanel({ onClose, currentUserRole, currentUserGroupId }: AdminPanelProps) {
-  const [activeTab, setActiveTab] = useState<'users' | 'groups'>('users');
+export default function AdminPanel({ onClose, userRole, currentGroupId }: AdminPanelProps) {
+  const [activeTab, setActiveTab] = useState<'groups' | 'users' | 'monitor'>('groups');
+  const [groups, setGroups] = useState<any[]>([]);
   const [users, setUsers] = useState<UserProfile[]>([]);
-  const [groups, setGroups] = useState<Group[]>([]);
-  const [loading, setLoading] = useState(true);
-  
-  // User creation state
-  const [newUserEmail, setNewUserEmail] = useState('');
-  const [newUserPassword, setNewUserPassword] = useState('');
-  const [newUserRole, setNewUserRole] = useState<UserRole>(UserRole.USUARIO);
-  const [newUserGroup, setNewUserGroup] = useState('none');
-  const [isAddingUser, setIsAddingUser] = useState(false);
-  const [editingUserId, setEditingUserId] = useState<string | null>(null);
-  const [editName, setEditName] = useState('');
-
   const [newGroupName, setNewGroupName] = useState('');
-  const [isCreatingGroup, setIsCreatingGroup] = useState(false);
-  const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
-  const [editGroupName, setEditGroupName] = useState('');
-  const [expandedGroupId, setExpandedGroupId] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
+  const [newUserEmail, setNewUserEmail] = useState('');
+  const [newUserDisplay, setNewUserDisplay] = useState('');
+  const [newUserRole, setNewUserRole] = useState<UserRole>(UserRole.USUARIO);
+  const [newUserGroup, setNewUserGroup] = useState('');
+
+  const isSuperAdmin = userRole === UserRole.ADMIN;
 
   useEffect(() => {
-    if (success || error) {
-      const timer = setTimeout(() => { setSuccess(null); setError(null); }, 3000);
-      return () => clearTimeout(timer);
-    }
-  }, [success, error]);
-
-  useEffect(() => {
-    const qUsers = query(collection(db, 'users'), orderBy('createdAt', 'desc'));
-    const unsubUsers = onSnapshot(qUsers, (snapshot) => {
-      const usersData = snapshot.docs.map(doc => {
-        const data = doc.data();
-        return {
-          ...data,
-          uid: doc.id,
-          actualUid: data.uid
-        };
-      }) as any[];
-      setUsers(usersData);
-    });
-
     const qGroups = query(collection(db, 'groups'), orderBy('createdAt', 'desc'));
-    const unsubGroups = onSnapshot(qGroups, (snapshot) => {
-      const groupsData = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id })) as Group[];
-      setGroups(groupsData);
-      setLoading(false);
-    });
-
-    return () => { unsubUsers(); unsubGroups(); };
+    const unsubGroups = onSnapshot(qGroups, (s) => setGroups(s.docs.map(d => ({ id: d.id, ...d.data() }))));
+    
+    const qUsers = query(collection(db, 'users'), orderBy('createdAt', 'desc'));
+    const unsubUsers = onSnapshot(qUsers, (s) => setUsers(s.docs.map(d => ({ uid: d.id, ...d.data() } as UserProfile))));
+    
+    return () => { unsubGroups(); unsubUsers(); };
   }, []);
 
-  // --- MOTOR DE CREACIÓN DOBLE ---
-  const handleCreateUser = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newUserEmail.trim() || !newUserPassword) {
-      setError("Falta correo o contraseña.");
-      return;
-    }
-
-    try {
-      // 1. Crear Clon de Google silencioso
-      const tempApp = initializeApp(auth.app.options, "TempAuthmaker" + Date.now());
-      const tempAuth = getAuth(tempApp);
-      
-      // 2. Crear la cuenta real con contraseña encriptada
-      const userCred = await createUserWithEmailAndPassword(tempAuth, newUserEmail.trim().toLowerCase(), newUserPassword);
-      await signOut(tempAuth);
-      await deleteApp(tempApp); // Destruir rastros para no dañar al Admin
-
-      const groupToAssign = currentUserRole === UserRole.ADMIN2 ? currentUserGroupId : (newUserGroup === 'none' ? null : newUserGroup);
-      
-      // 3. Registrar al operario en nuestra Base de Radios
-      const customUid = userCred.user.uid;
-      await updateDoc(doc(db, 'users', customUid), {
-        email: newUserEmail.toLowerCase().trim(),
-        role: newUserRole,
-        groupId: groupToAssign,
-        uid: customUid,
-        displayName: newUserEmail.split('@')[0], // Base name
-        createdAt: serverTimestamp()
-      }).catch(async () => {
-         // Si la cascada falla y el doc no existe:
-         await addDoc(collection(db, 'users'), {
-            email: newUserEmail.toLowerCase().trim(),
-            role: newUserRole,
-            groupId: groupToAssign,
-            uid: customUid,
-            displayName: newUserEmail.split('@')[0],
-            createdAt: serverTimestamp()
-          });
-      });
-
-      setNewUserEmail('');
-      setNewUserPassword('');
-      setIsAddingUser(false);
-      setSuccess("¡Cuenta operativa creada y lista para radio!");
-    } catch (err: any) {
-      setError("Error Firebase: " + err.message);
-    }
+  const handleCreateGroup = async () => {
+    if (!newGroupName) return;
+    await createGroup(newGroupName, isSuperAdmin ? null : currentGroupId);
+    setNewGroupName('');
   };
 
-  const handleUpdateRole = async (uid: string, newRole: UserRole) => {
-    try { await updateDoc(doc(db, 'users', uid), { role: newRole }); } catch (err) {}
+  const handleRegisterUser = async () => {
+    if (!newUserEmail || !newUserDisplay) return;
+    await preRegisterUser(newUserEmail, newUserDisplay, newUserRole, newUserGroup || currentGroupId);
+    setNewUserEmail(''); setNewUserDisplay('');
   };
 
-  const handleUpdateName = async (uid: string) => {
-    if (!editName.trim()) return;
-    try {
-      await updateDoc(doc(db, 'users', uid), { displayName: editName.trim() });
-      setEditingUserId(null);
-      setSuccess("Nombre actualizado.");
-    } catch (err) {}
-  };
-
-  const handleUpdateGroup = async (uid: string, groupId: string) => {
-    try { await updateDoc(doc(db, 'users', uid), { groupId: groupId === 'none' ? null : groupId }); } catch (err) {}
-  };
-
-  const handleDeleteUser = async (uid: string) => {
-    try {
-      await deleteDoc(doc(db, 'users', uid));
-      setSuccess("Usuario eliminado.");
-    } catch (err) {}
-  };
-
-  const handleCreateGroup = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newGroupName.trim()) return;
-    try {
-      const docRef = await addDoc(collection(db, 'groups'), {
-        name: newGroupName,
-        parentGroupId: currentUserRole === UserRole.ADMIN2 ? currentUserGroupId : null,
-        createdAt: serverTimestamp()
-      });
-      await updateDoc(docRef, { id: docRef.id });
-      setNewGroupName('');
-      setIsCreatingGroup(false);
-      setSuccess("Grupo creado.");
-    } catch (err) {}
-  };
-
-  const handleDeleteGroup = async (id: string) => {
-    try {
-      const usersInGroup = users.filter(u => (u as any).groupId === id);
-      for (const u of usersInGroup) { await updateDoc(doc(db, 'users', u.uid), { groupId: null }); }
-      await deleteDoc(doc(db, 'groups', id));
-      setSuccess("Grupo eliminado.");
-    } catch (err) {}
-  };
-
-  const handleUpdateGroupName = async (groupId: string) => {
-    if (!editGroupName.trim()) return;
-    try {
-      await updateDoc(doc(db, 'groups', groupId), { name: editGroupName });
-      setEditingGroupId(null);
-      setSuccess("Nombre de grupo actualizado.");
-    } catch (err) {}
-  };
+  // Filtrar grupos/usuarios para Admin2
+  const visibleGroups = isSuperAdmin ? groups : groups.filter(g => g.id === currentGroupId || g.parentGroupId === currentGroupId);
+  const visibleUsers = isSuperAdmin ? users : users.filter(u => u.groupId === currentGroupId);
 
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-center justify-center p-2 bg-black/40 backdrop-blur-sm">
-      <div className="bg-white w-full max-w-md rounded-2xl border border-gray-200 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
-        <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between bg-gray-50">
-          <div className="flex items-center gap-2">
-            <ShieldCheck className="w-4 h-4 text-blue-600" />
-            <h2 className="text-sm font-bold uppercase tracking-wider text-gray-900">Admin</h2>
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md">
+      <motion.div initial={{ scale: 0.95 }} animate={{ scale: 1 }} className="bg-slate-900 w-full max-w-4xl h-[85vh] rounded-[2rem] border border-slate-800 shadow-2xl flex flex-col overflow-hidden">
+        
+        {/* Sidebar / Tabs */}
+        <div className="flex h-full">
+          <div className="w-20 sm:w-64 border-r border-slate-800 p-6 flex flex-col gap-8">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-amber-600 rounded-xl flex items-center justify-center shadow-lg shadow-amber-900/40"><LayoutDashboard className="text-white w-6 h-6"/></div>
+              <p className="hidden sm:block font-black text-slate-100 tracking-tighter">CENTRAL CONTROL</p>
+            </div>
+            
+            <nav className="flex flex-col gap-2">
+              <button onClick={() => setActiveTab('groups')} className={cn("p-4 rounded-2xl flex items-center gap-3 transition-all", activeTab === 'groups' ? "bg-blue-600 text-white shadow-lg shadow-blue-900/30" : "text-slate-400 hover:bg-slate-800")}>
+                <FolderPlus className="w-5 h-5"/> <span className="hidden sm:block font-bold">Gestión Grupos</span>
+              </button>
+              <button onClick={() => setActiveTab('users')} className={cn("p-4 rounded-2xl flex items-center gap-3 transition-all", activeTab === 'users' ? "bg-blue-600 text-white shadow-lg shadow-blue-900/30" : "text-slate-400 hover:bg-slate-800")}>
+                <UserPlus className="w-5 h-5"/> <span className="hidden sm:block font-bold">Gestión Personal</span>
+              </button>
+              {isSuperAdmin && (
+                <button onClick={() => setActiveTab('monitor')} className={cn("p-4 rounded-2xl flex items-center gap-3 transition-all", activeTab === 'monitor' ? "bg-red-600 text-white shadow-lg shadow-red-900/30" : "text-slate-400 hover:bg-slate-800")}>
+                  <Shield className="w-5 h-5"/> <span className="hidden sm:block font-bold">Monitor Global</span>
+                </button>
+              )}
+            </nav>
+
+            <button onClick={onClose} className="mt-auto p-4 rounded-2xl bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center gap-2 font-bold mb-4">
+              <X className="w-5 h-5"/> <span className="hidden sm:block">Cerrar Panel</span>
+            </button>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100"><X className="w-4 h-4 text-gray-400" /></button>
-        </div>
 
-        <div className="flex p-1 bg-gray-100 border-b border-gray-200">
-          <button onClick={() => setActiveTab('users')} className={cn("flex-1 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all", activeTab === 'users' ? "bg-white text-gray-900 shadow-sm" : "text-gray-400")}>Usuarios</button>
-          {(currentUserRole === UserRole.ADMIN || currentUserRole === UserRole.ADMIN2) && (
-            <button onClick={() => setActiveTab('groups')} className={cn("flex-1 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all", activeTab === 'groups' ? "bg-white text-gray-900 shadow-sm" : "text-gray-400")}>Grupos</button>
-          )}
-        </div>
-
-        <div className="flex-1 overflow-y-auto p-3 space-y-4 relative">
-          <AnimatePresence>
-            {success && (<motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="absolute top-2 left-3 right-3 z-10 bg-green-500/90 text-white text-[10px] font-bold py-1.5 px-3 rounded-lg shadow-lg flex items-center gap-2"><Check className="w-3 h-3" />{success}</motion.div>)}
-            {error && (<motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="absolute top-2 left-3 right-3 z-10 bg-red-500/90 text-white text-[10px] font-bold py-1.5 px-3 rounded-lg shadow-lg flex items-center gap-2"><ShieldAlert className="w-3 h-3" />{error}</motion.div>)}
-          </AnimatePresence>
-
-          {loading ? (
-            <div className="flex justify-center py-8"><div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" /></div>
-          ) : activeTab === 'users' ? (
-            <div className="space-y-3">
-              {!isAddingUser ? (
-                <button onClick={() => setIsAddingUser(true)} className="w-full py-2 border border-dashed border-gray-200 rounded-xl text-[10px] font-bold uppercase text-gray-400 hover:text-blue-600 hover:border-blue-500/40 transition-all flex items-center justify-center gap-2"><UserPlus className="w-3 h-3" /> Crear Radioperador</button>
-              ) : (
-                <form onSubmit={handleCreateUser} className="bg-blue-50 border border-blue-100 rounded-xl p-3 space-y-2">
-                  <input type="email" placeholder="Correo electrónico del oficial" value={newUserEmail} onChange={(e) => setNewUserEmail(e.target.value)} className="w-full bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-xs outline-none" autoFocus />
-                  <input type="password" placeholder="Contraseña asignada (Mínimo 6 letras)" value={newUserPassword} onChange={(e) => setNewUserPassword(e.target.value)} className="w-full bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-xs outline-none" />
-                  <div className="flex gap-2">
-                    <select value={newUserRole} onChange={(e) => setNewUserRole(e.target.value as UserRole)} className="flex-1 bg-white border border-gray-200 rounded-lg px-2 py-1.5 text-[10px] font-bold outline-none">
-                      {currentUserRole === UserRole.ADMIN && <option value={UserRole.ADMIN}>Admin</option>}
-                      <option value={UserRole.ADMIN2}>Admin 2</option>
-                      <option value={UserRole.USUARIO}>Usuario</option>
-                    </select>
-                    {currentUserRole === UserRole.ADMIN ? (
-                      <select value={newUserGroup} onChange={(e) => setNewUserGroup(e.target.value)} className="flex-1 bg-white border border-gray-200 rounded-lg px-2 py-1.5 text-[10px] font-bold outline-none">
-                        <option value="none">Sin Grupo</option>
-                        {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
-                      </select>
-                    ) : (
-                      <div className="flex-1 bg-white border border-gray-200 rounded-lg px-2 py-1.5 text-[10px] font-bold text-gray-400 flex items-center">{groups.find(g => g.id === currentUserGroupId)?.name || "Sin Grupo"}</div>
-                    )}
-                  </div>
-                  <div className="flex gap-2 pt-1">
-                     <button type="submit" className="flex-1 py-1.5 bg-blue-600 text-white text-[10px] font-bold rounded-lg shadow-lg">Crear Cuenta</button>
-                     <button type="button" onClick={() => setIsAddingUser(false)} className="px-3 py-1.5 bg-gray-100 text-gray-500 text-[10px] font-bold rounded-lg">Cerrar</button>
-                  </div>
-                </form>
-              )}
-
-              <div className="space-y-1.5">
-                {users.filter(u => currentUserRole === UserRole.ADMIN || (u as any).groupId === currentUserGroupId).map((u) => (
-                    <div key={u.uid} className="bg-gray-50 border border-gray-100 rounded-xl p-2 flex flex-col gap-2">
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <div className="w-6 h-6 rounded-full bg-white border border-gray-100 flex items-center justify-center relative">
-                            <UserIcon className="w-3 h-3 text-gray-400" />
-                            {u.isTalking && <div className="absolute -top-1 -right-1 w-2 h-2 bg-blue-500 rounded-full animate-pulse" />}
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            {editingUserId === u.uid ? (
-                              <div className="flex gap-1 items-center">
-                                <input type="text" value={editName} onChange={(e) => setEditName(e.target.value)} className="flex-1 bg-white border border-blue-500/50 rounded px-2 py-0.5 text-[10px] outline-none" autoFocus onKeyDown={(e) => e.key === 'Enter' && handleUpdateName(u.uid)} />
-                                <button onClick={() => handleUpdateName(u.uid)} className="p-1 text-green-600"><Check className="w-3 h-3" /></button>
-                                <button onClick={() => setEditingUserId(null)} className="p-1 text-red-400"><X className="w-3 h-3" /></button>
-                              </div>
-                            ) : (
-                              <p className="text-[10px] font-bold truncate text-gray-900 cursor-pointer hover:text-blue-600 flex items-center gap-1" onClick={() => { setEditingUserId(u.uid); setEditName(u.displayName || u.email.split('@')[0]); }}>
-                                {u.displayName || u.email.split('@')[0]} <Plus className="w-2 h-2 opacity-0 group-hover:opacity-100" />
-                              </p>
-                            )}
-                            <p className="text-[8px] text-gray-400 truncate">{u.email}</p>
-                          </div>
-                        </div>
-                        <button onClick={() => handleDeleteUser(u.uid)} className="p-1.5 text-red-500/40 hover:text-red-500"><Trash2 className="w-3 h-3" /></button>
-                      </div>
-                      <div className="flex gap-1.5">
-                        <select value={u.role} onChange={(e) => handleUpdateRole(u.uid, e.target.value as UserRole)} disabled={currentUserRole === UserRole.ADMIN2 && u.role === UserRole.ADMIN} className="flex-1 bg-white border border-gray-200 rounded-lg px-2 py-1 text-[9px] font-bold outline-none">
-                          {currentUserRole === UserRole.ADMIN && <option value={UserRole.ADMIN}>Admin</option>}
-                          <option value={UserRole.ADMIN2}>Admin 2</option>
-                          <option value={UserRole.USUARIO}>Usuario</option>
-                        </select>
-                        {currentUserRole === UserRole.ADMIN ? (
-                          <select value={(u as any).groupId || 'none'} onChange={(e) => handleUpdateGroup(u.uid, e.target.value)} className="flex-1 bg-white border border-gray-200 rounded-lg px-2 py-1 text-[9px] font-bold outline-none">
-                            <option value="none">Sin Grupo</option>
-                            {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
-                          </select>
-                        ) : (
-                          <div className="flex-1 bg-white border border-gray-200 rounded-lg px-2 py-1 text-[9px] font-bold text-gray-400 flex items-center">{groups.find(g => g.id === (u as any).groupId)?.name || "Sin Grupo"}</div>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {!isCreatingGroup ? (
-                <button onClick={() => setIsCreatingGroup(true)} className="w-full py-2 border border-dashed border-gray-200 rounded-xl text-[10px] font-bold uppercase text-gray-400 hover:text-purple-600 flex items-center justify-center gap-2"><Plus className="w-3 h-3" /> Nuevo Grupo</button>
-              ) : (
-                <form onSubmit={handleCreateGroup} className="bg-purple-50 border border-purple-100 rounded-xl p-3 space-y-2">
-                  <input type="text" placeholder="Nombre del grupo" value={newGroupName} onChange={(e) => setNewGroupName(e.target.value)} className="w-full bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-xs outline-none" autoFocus />
-                  <div className="flex gap-2">
-                    <button type="submit" className="flex-1 py-1.5 bg-purple-600 text-white text-[10px] font-bold rounded-lg">Crear</button>
-                    <button type="button" onClick={() => setIsCreatingGroup(false)} className="px-3 py-1.5 bg-gray-100 text-gray-500 text-[10px] font-bold rounded-lg">X</button>
-                  </div>
-                </form>
-              )}
-
-              <div className="space-y-1.5">
-                {groups.filter(g => currentUserRole === UserRole.ADMIN || g.id === currentUserGroupId || g.parentGroupId === currentUserGroupId).map((g) => {
-                    const groupMembers = users.filter(u => (u as any).groupId === g.id);
-                    return (
-                      <div key={g.id} className="bg-gray-50 border border-gray-100 rounded-xl p-2 space-y-2">
-                         <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2 min-w-0 flex-1">
-                               <Users className="w-3 h-3 text-purple-600" />
-                               <span className="text-[10px] font-bold text-gray-900 truncate">{g.name}</span>
+          {/* Main Content */}
+          <div className="flex-1 flex flex-col min-w-0">
+             <div className="p-8 overflow-y-auto">
+                <AnimatePresence mode="wait">
+                   {activeTab === 'groups' && (
+                     <motion.div key="groups" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-8">
+                        <div className="space-y-4">
+                            <h2 className="text-2xl font-black text-white">Generar Nuevo Grupo</h2>
+                            <div className="flex gap-4">
+                                <input type="text" placeholder="Nombre del Grupo/Canal" value={newGroupName} onChange={e => setNewGroupName(e.target.value)} className="flex-1 p-4 bg-slate-950/50 border border-slate-800 rounded-2xl outline-none focus:border-blue-500" />
+                                <button onClick={handleCreateGroup} className="px-8 py-4 bg-blue-600 text-white font-bold rounded-2xl hover:bg-blue-500 transition-colors">CREAR</button>
                             </div>
-                            <button onClick={() => handleDeleteGroup(g.id)} className="p-1 text-red-500/40 hover:text-red-500"><Trash2 className="w-3 h-3" /></button>
-                         </div>
-                      </div>
-                    );
-                  })}
-              </div>
-            </div>
-          )}
+                        </div>
+
+                        <div className="space-y-4">
+                           <h3 className="text-xs font-black text-slate-500 uppercase tracking-[0.2em]">Canales Activos en el Sistema</h3>
+                           <div className="grid gap-3">
+                              {visibleGroups.map(g => (
+                                <div key={g.id} className="p-5 glass rounded-2xl flex items-center justify-between group hover:border-blue-500/50 transition-all">
+                                   <div className="flex items-center gap-4">
+                                      <div className="w-12 h-12 bg-slate-800 rounded-xl flex items-center justify-center font-bold text-blue-400">#</div>
+                                      <div>
+                                         <p className="font-black text-slate-100 uppercase">{g.name}</p>
+                                         <p className="text-[10px] text-slate-500 font-bold">ID: {g.id}</p>
+                                      </div>
+                                   </div>
+                                   <div className="flex gap-2">
+                                      {isSuperAdmin && (
+                                        <button onClick={() => deleteGroup(g.id)} className="p-3 text-slate-500 hover:text-red-500 transition-colors"><Trash2 className="w-5 h-5"/></button>
+                                      )}
+                                   </div>
+                                </div>
+                              ))}
+                           </div>
+                        </div>
+                     </motion.div>
+                   )}
+
+                   {activeTab === 'users' && (
+                     <motion.div key="users" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-8">
+                        <div className="space-y-4">
+                            <h2 className="text-2xl font-black text-white">Pre-Registro de Personal</h2>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <input type="email" placeholder="Correo Electrónico" value={newUserEmail} onChange={e => setNewUserEmail(e.target.value)} className="p-4 bg-slate-950/50 border border-slate-800 rounded-2xl outline-none focus:border-blue-500" />
+                                <input type="text" placeholder="Nombre Completo" value={newUserDisplay} onChange={e => setNewUserDisplay(e.target.value)} className="p-4 bg-slate-950/50 border border-slate-800 rounded-2xl outline-none focus:border-blue-500" />
+                                <select value={newUserRole} onChange={e => setNewUserRole(e.target.value as UserRole)} className="p-4 bg-slate-950/50 border border-slate-800 rounded-2xl outline-none focus:border-blue-500 text-slate-400">
+                                   <option value={UserRole.USUARIO}>Usuario Estándar</option>
+                                   <option value={UserRole.ADMIN2}>Administrador Secundario (Grupo)</option>
+                                   {isSuperAdmin && <option value={UserRole.ADMIN}>Administrador Maestro</option>}
+                                </select>
+                                <select value={newUserGroup} onChange={e => setNewUserGroup(e.target.value)} className="p-4 bg-slate-950/50 border border-slate-800 rounded-2xl outline-none focus:border-blue-500 text-slate-400">
+                                   <option value="">Asignar Grupo...</option>
+                                   {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                                </select>
+                            </div>
+                            <button onClick={handleRegisterUser} className="w-full py-4 bg-blue-600 text-white font-bold rounded-2xl hover:bg-blue-500 transition-colors">AUTORIZAR ACCESO</button>
+                        </div>
+
+                        <div className="space-y-4">
+                           <h3 className="text-xs font-black text-slate-500 uppercase tracking-[0.2em]">Personal con Acceso Autorizado</h3>
+                           <div className="grid gap-3">
+                              {visibleUsers.map(u => (
+                                <div key={u.uid} className="p-5 glass rounded-2xl flex items-center justify-between">
+                                   <div className="flex items-center gap-4">
+                                      <div className={cn("w-12 h-12 rounded-xl flex items-center justify-center font-bold text-white", u.role === UserRole.ADMIN ? "bg-amber-600" : "bg-blue-600")}>
+                                        {u.displayName?.[0] || 'U'}
+                                      </div>
+                                      <div>
+                                         <p className="font-black text-slate-100 uppercase">{u.displayName}</p>
+                                         <p className="text-[10px] text-slate-500 font-bold">{u.email} • {u.role.toUpperCase()}</p>
+                                      </div>
+                                   </div>
+                                   <button onClick={() => deleteUser(u.uid)} className="p-3 text-slate-500 hover:text-red-500 transition-colors"><Trash2 className="w-5 h-5"/></button>
+                                </div>
+                              ))}
+                           </div>
+                        </div>
+                     </motion.div>
+                   )}
+
+                   {activeTab === 'monitor' && (
+                     <motion.div key="monitor" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-8">
+                        <div className="p-8 bg-red-600/10 border border-red-500/20 rounded-3xl space-y-2">
+                           <div className="flex items-center gap-2 text-red-500">
+                              <Shield className="w-5 h-5"/>
+                              <h2 className="text-xl font-black">CENTRO DE MONITOREO GLOBAL</h2>
+                           </div>
+                           <p className="text-xs text-red-400 font-bold uppercase tracking-widest opacity-60 italic">Escucha y visualización de todos los grupos del sistema</p>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                           {groups.map(g => (
+                             <div key={g.id} className="p-6 glass rounded-3xl flex items-center justify-between border-l-4 border-l-slate-800">
+                                <div>
+                                   <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest leading-none mb-1">Indicativo Canal</p>
+                                   <p className="text-lg font-black text-slate-100">{g.name}</p>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                   <div className="w-2 h-2 bg-slate-800 rounded-full"/>
+                                   <button className="px-4 py-2 bg-slate-800 text-[10px] font-black hover:bg-slate-700 rounded-full text-slate-300 transition-all">ESCUCHAR</button>
+                                </div>
+                             </div>
+                           ))}
+                        </div>
+                     </motion.div>
+                   )}
+                </AnimatePresence>
+             </div>
+          </div>
         </div>
-      </div>
+      </motion.div>
     </motion.div>
   );
 }

@@ -101,4 +101,31 @@ export const signIn = async (email: string, pass: string) => {
 };
 
 export const logOut = () => signOut(auth);
+
+// FUNCIONES DE GESTIÓN (ADMIN)
+export const createGroup = async (name: string, parentGroupId: string | null = null) => {
+  const groupRef = doc(collection(db, 'groups'));
+  await setDoc(groupRef, { id: groupRef.id, name, parentGroupId, createdAt: serverTimestamp() });
+  return groupRef.id;
+};
+
+export const deleteGroup = (id: string) => deleteDoc(doc(db, 'groups', id));
+
+export const updateGroup = (id: string, name: string) => updateDoc(doc(db, 'groups', id), { name });
+
+export const preRegisterUser = async (email: string, displayName: string, role: UserRole, groupId: string | null) => {
+  const userRef = doc(collection(db, 'users'));
+  await setDoc(userRef, { 
+    email: email.toLowerCase().trim(), 
+    displayName, 
+    role, 
+    groupId, 
+    createdAt: serverTimestamp() 
+  });
+};
+
+export const deleteUser = (uid: string) => deleteDoc(doc(db, 'users', uid));
+
+export const updateUserProfile = (uid: string, data: Partial<UserProfile>) => updateDoc(doc(db, 'users', uid), data);
+
 export { onAuthStateChanged, type User };
