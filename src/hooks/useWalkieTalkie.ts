@@ -3,8 +3,8 @@ import { io, Socket } from 'socket.io-client';
 
 const SOCKET_URL = 'https://llamada-urgente-2.onrender.com';
 
-// MIME Type compatible con la mayoría de navegadores para OPUS/WEBM
-const MIME_TYPE = 'audio/webm; codecs="opus"';
+// MIME Type universal para Android 8+ y Web
+const MIME_TYPE = 'audio/webm;codecs=opus';
 
 export const useWalkieTalkie = (groupId: string | null, onNewRecording?: (recording: any) => void) => {
   const [isConnected, setIsConnected] = useState(false);
@@ -15,6 +15,7 @@ export const useWalkieTalkie = (groupId: string | null, onNewRecording?: (record
   const socketRef = useRef<Socket | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const receivingTimeoutRef = useRef<any>(null);
   
   // Referencias para el streaming de audio recibiendo
   const mediaSourceRef = useRef<MediaSource | null>(null);
@@ -25,7 +26,12 @@ export const useWalkieTalkie = (groupId: string | null, onNewRecording?: (record
     if (!groupId) return;
     if (socketRef.current?.connected) socketRef.current.disconnect();
     
-    const socket = io(SOCKET_URL, { transports: ['websocket'], reconnection: true });
+    const socket = io(SOCKET_URL, { 
+        transports: ['websocket'], 
+        reconnection: true,
+        reconnectionAttempts: Infinity,
+        reconnectionDelay: 1000
+    });
     socketRef.current = socket;
 
     socket.on('connect', () => { 
@@ -38,17 +44,22 @@ export const useWalkieTalkie = (groupId: string | null, onNewRecording?: (record
 
     // LÓGICA DE RECIBIR AUDIO EN TIEMPO REAL
     socket.on('audio-receive', async ({ data, groupId: incomingGroupId }) => {
-      // Monitoreo Global: Notificar qué grupo está hablando si estamos monitoreando todo
+      if (!data || data.byteLength === 0) return; // Ignorar paquetes vacíos que traban la UI
+
+      // Monitoreo Global
       if (groupId === 'all' && incomingGroupId) {
-         // Notificar a la UI qué grupo está hablando
          window.dispatchEvent(new CustomEvent('group-talking', { detail: incomingGroupId }));
       }
 
       setIsReceiving(true);
+      
+      // Control de parpadeo (Heartbeat)
+      if (receivingTimeoutRef.current) clearTimeout(receivingTimeoutRef.current);
+      receivingTimeoutRef.current = setTimeout(() => setIsReceiving(false), 1200);
+
       if (!mediaSourceRef.current || mediaSourceRef.current.readyState !== 'open') initMediaSource();
       queueRef.current.push(data);
       appendToBuffer();
-      setTimeout(() => setIsReceiving(false), 2000);
     });
 
     socket.on('new-recording', (recording) => { if (onNewRecording) onNewRecording(recording); });

@@ -101,6 +101,8 @@ async function startServer() {
     });
     
     socket.on("audio-data", ({ groupId, data }) => {
+      if (!data || data.byteLength === 0) return; // No retransmitir basura
+      
       socket.to(groupId).emit("audio-receive", { userId: socket.id, data, groupId });
       if (groupId === "all" || groupId === "broadcast") {
           socket.broadcast.emit("audio-receive", { userId: socket.id, data, groupId: "broadcast" });

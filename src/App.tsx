@@ -186,7 +186,7 @@ export default function App() {
       <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="text-center space-y-12 max-w-sm w-full">
         <div className="relative inline-block scale-125">
           <h1 className="text-7xl font-black text-green-500 tracking-tighter italic drop-shadow-[0_0_15px_rgba(34,197,94,0.4)]">COE MC</h1>
-          <div className="absolute -top-6 -right-6 bg-green-500 text-black px-3 py-1 text-[12px] font-black rounded-lg rotate-12 shadow-xl">V5.0</div>
+          <div className="absolute -top-6 -right-6 bg-green-500 text-black px-3 py-1 text-[12px] font-black rounded-lg rotate-12 shadow-xl">V7.0</div>
         </div>
         <div className="space-y-6 glass p-10 rounded-[2.5rem] border-white/5 shadow-2xl relative">
           <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-blue-600 text-white px-4 py-1 rounded-full text-[10px] font-black tracking-widest">AUTENTICACIÓN</div>
@@ -373,18 +373,8 @@ export default function App() {
         </div>
 
         {/* Footer info */}
-        <div className="py-6 text-center flex items-center justify-between px-4 border-t border-slate-900 mt-auto">
-            <div className="flex items-center gap-3">
-                <ShieldCheck className="w-4 h-4 text-green-500/50"/>
-                <p className="text-[9px] text-slate-700 font-bold tracking-[0.3em] uppercase hidden sm:block">ENCRYPTED COMM • VERSION 6.0 PRO</p>
-            </div>
-            <div className="flex flex-col items-center">
-                <p className="text-[10px] text-slate-500 font-black tracking-widest uppercase">2026 - CELULAR 921873749</p>
-            </div>
-            <div className="flex items-center gap-6">
-                <div className="flex items-center gap-2"><div className="w-1.5 h-1.5 bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.8)] rounded-full"/><span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">AES-SECURE</span></div>
-                <div className="flex items-center gap-2"><div className="w-1.5 h-1.5 bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.8)] rounded-full"/><span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">NO-LATENCY</span></div>
-            </div>
+        <div className="py-6 text-center border-t border-slate-900 mt-auto">
+            <p className="text-[10px] text-slate-500 font-black tracking-[0.3em] uppercase">2026 - CELULAR 921873749</p>
         </div>
       </div>
 
