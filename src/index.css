@@ -9,14 +9,18 @@
   color-scheme: dark;
 }
 
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden; /* Evita el rebote de scroll en móviles */
+}
+
 body {
   background: #020617; /* Slate 950 */
-  margin: 0;
   display: flex;
   min-width: 320px;
-  min-height: 100vh;
   color: #f8fafc;
-  overflow-x: hidden;
 }
 
 /* Glassmorphism utility */

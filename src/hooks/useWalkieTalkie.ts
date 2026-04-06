@@ -1,37 +1,98 @@
-// 2. src/hooks/useWalkieTalkie.ts (Lógica robusta de audio)
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { io, Socket } from 'socket.io-client';
 
 const SOCKET_URL = 'https://llamada-urgente-2.onrender.com';
+
+// MIME Type compatible con la mayoría de navegadores para OPUS/WEBM
+const MIME_TYPE = 'audio/webm; codecs="opus"';
 
 export const useWalkieTalkie = (groupId: string | null, onNewRecording?: (recording: any) => void) => {
   const [isConnected, setIsConnected] = useState(false);
   const [isTalking, setIsTalking] = useState(false);
   const [isReceiving, setIsReceiving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  
   const socketRef = useRef<Socket | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<Blob[]>([]);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  
+  // Referencias para el streaming de audio recibiendo
+  const mediaSourceRef = useRef<MediaSource | null>(null);
+  const sourceBufferRef = useRef<SourceBuffer | null>(null);
+  const queueRef = useRef<ArrayBuffer[]>([]);
 
   const connect = useCallback(() => {
     if (!groupId) return;
     if (socketRef.current?.connected) socketRef.current.disconnect();
+    
     const socket = io(SOCKET_URL, { transports: ['websocket'], reconnection: true });
     socketRef.current = socket;
-    socket.on('connect', () => { setIsConnected(true); setError(null); socket.emit('join-group', groupId); });
+
+    socket.on('connect', () => { 
+      setIsConnected(true); 
+      setError(null); 
+      socket.emit('join-group', groupId); 
+    });
+    
     socket.on('disconnect', () => setIsConnected(false));
+
+    // LÓGICA DE RECIBIR AUDIO EN TIEMPO REAL
     socket.on('audio-receive', async ({ data }) => {
       setIsReceiving(true);
-      try {
-        const blob = new Blob([data], { type: 'audio/webm' });
-        const url = URL.createObjectURL(blob);
-        if (audioRef.current) { audioRef.current.src = url; await audioRef.current.play(); }
-        setTimeout(() => setIsReceiving(false), 500);
-      } catch { setIsReceiving(false); }
+      
+      // Si no hay MediaSource activo, lo inicializamos
+      if (!mediaSourceRef.current || mediaSourceRef.current.readyState !== 'open') {
+        initMediaSource();
+      }
+
+      // Añadimos el fragmento a la cola para procesarlo cuando el buffer esté libre
+      queueRef.current.push(data);
+      appendToBuffer();
+      
+      // Feedback visual de recibiendo
+      setTimeout(() => setIsReceiving(false), 2000);
     });
+
     socket.on('new-recording', (recording) => { if (onNewRecording) onNewRecording(recording); });
+
   }, [groupId, onNewRecording]);
+
+  const initMediaSource = () => {
+    if (mediaSourceRef.current) {
+        try { mediaSourceRef.current.endOfStream(); } catch(e) {}
+    }
+
+    const ms = new MediaSource();
+    mediaSourceRef.current = ms;
+    if (audioRef.current) {
+        audioRef.current.src = URL.createObjectURL(ms);
+        audioRef.current.play().catch(e => console.log("Interacción requerida para audio"));
+    }
+
+    ms.addEventListener('sourceopen', () => {
+      if (SourceBuffer.isTypeSupported(MIME_TYPE)) {
+        const sb = ms.addSourceBuffer(MIME_TYPE);
+        sourceBufferRef.current = sb;
+        sb.addEventListener('updateend', appendToBuffer);
+      } else {
+        console.error("MIME type no soportado:", MIME_TYPE);
+      }
+    });
+  };
+
+  const appendToBuffer = () => {
+    const sb = sourceBufferRef.current;
+    if (sb && !sb.updating && queueRef.current.length > 0) {
+      const chunk = queueRef.current.shift();
+      if (chunk) {
+        try {
+          sb.appendBuffer(chunk);
+        } catch (e) {
+          console.error("Error al añadir al buffer:", e);
+        }
+      }
+    }
+  };
 
   const disconnect = useCallback(() => {
     if (socketRef.current) { socketRef.current.disconnect(); socketRef.current = null; }
@@ -41,10 +102,12 @@ export const useWalkieTalkie = (groupId: string | null, onNewRecording?: (record
 
   const startTalking = useCallback((userId: string, displayName: string) => {
     if (!socketRef.current?.connected || !groupId || isTalking) return;
+    
     navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
-      const mediaRecorder = new MediaRecorder(stream);
+      // Usar MediaRecorder con intervalos pequeños para streaming
+      const mediaRecorder = new MediaRecorder(stream, { mimeType: MIME_TYPE });
       mediaRecorderRef.current = mediaRecorder;
-      audioChunksRef.current = [];
+      
       mediaRecorder.ondataavailable = (event) => {
         if (event.data.size > 0 && socketRef.current?.connected) {
           event.data.arrayBuffer().then(buffer => {
@@ -52,10 +115,15 @@ export const useWalkieTalkie = (groupId: string | null, onNewRecording?: (record
           });
         }
       };
-      mediaRecorder.start(100);
+      
+      // Enviar datos cada 200ms para balancear fluidez y carga
+      mediaRecorder.start(200);
       setIsTalking(true);
       socketRef.current?.emit('audio-start', { groupId, userId, displayName });
-    }).catch(() => setError('Permiso denegado'));
+    }).catch(e => {
+        console.error("Error micro:", e);
+        setError('Permiso denegado de micrófono');
+    });
   }, [groupId, isTalking]);
 
   const stopTalking = useCallback(() => {
@@ -69,8 +137,17 @@ export const useWalkieTalkie = (groupId: string | null, onNewRecording?: (record
   }, [groupId]);
 
   useEffect(() => {
-    audioRef.current = new Audio();
-    return () => { disconnect(); };
+    const audio = new Audio();
+    audio.autoplay = true;
+    audioRef.current = audio;
+    
+    // Al limpiar, desconectar y liberar recursos
+    return () => { 
+        disconnect();
+        if (mediaSourceRef.current) {
+            try { mediaSourceRef.current.endOfStream(); } catch(e) {}
+        }
+    };
   }, [disconnect]);
 
   return { isConnected, isTalking, isReceiving, error, connect, disconnect, startTalking, stopTalking };
