@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Users, FolderPlus, UserPlus, Trash2, Edit3, Shield, Star, LayoutDashboard, ChevronRight, Search, X, Check, Save } from 'lucide-react';
+import { Users, FolderPlus, UserPlus, Trash2, Edit3, Shield, Star, LayoutDashboard, ChevronRight, Search, X, Check, Save, Download, FileAudio, Play, History } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { db, UserRole, UserProfile, createGroup, deleteGroup, updateGroup, preRegisterUser, deleteUser, updateUserProfile } from '../firebase';
 import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
@@ -12,9 +12,10 @@ interface AdminPanelProps {
 }
 
 export default function AdminPanel({ onClose, userRole, currentGroupId }: AdminPanelProps) {
-  const [activeTab, setActiveTab] = useState<'groups' | 'users' | 'monitor'>('groups');
+  const [activeTab, setActiveTab] = useState<'groups' | 'users' | 'monitor' | 'recordings'>('groups');
   const [groups, setGroups] = useState<any[]>([]);
   const [users, setUsers] = useState<UserProfile[]>([]);
+  const [recordings, setRecordings] = useState<any[]>([]);
   
   // Edición
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
@@ -38,6 +39,31 @@ export default function AdminPanel({ onClose, userRole, currentGroupId }: AdminP
     const unsubUsers = onSnapshot(qUsers, (s) => setUsers(s.docs.map(d => ({ uid: d.id, ...d.data() } as UserProfile))));
     return () => { unsubGroups(); unsubUsers(); };
   }, []);
+
+  // Cargar grabaciones
+  const fetchRecordings = async () => {
+    try {
+        const resp = await fetch(`https://llamada-urgente-2.onrender.com/api/recordings/all`);
+        const data = await resp.json();
+        setRecordings(data);
+    } catch (e) { console.error("Error al cargar audios:", e); }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'recordings') fetchRecordings();
+  }, [activeTab]);
+
+  const handleDeleteRecording = async (filename: string) => {
+    if (!confirm('¿Seguro que desea eliminar esta evidencia permanentemente?')) return;
+    try {
+        await fetch(`https://llamada-urgente-2.onrender.com/api/recordings/${filename}`, { method: 'DELETE' });
+        fetchRecordings();
+    } catch (e) { console.error("Error al borrar:", e); }
+  };
+
+  const handleDownload = (filename: string) => {
+    window.open(`https://llamada-urgente-2.onrender.com/api/recordings/play/${filename}`, '_blank');
+  };
 
   const handleCreateGroup = async () => {
     if (!newGroupName) return;
@@ -68,7 +94,7 @@ export default function AdminPanel({ onClose, userRole, currentGroupId }: AdminP
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-xl">
-      <motion.div initial={{ scale: 0.95, y: 20 }} animate={{ scale: 1, y: 0 }} className="bg-slate-900 w-full max-w-5xl h-[90vh] rounded-[2.5rem] border border-slate-800 shadow-2xl flex flex-col overflow-hidden">
+      <motion.div initial={{ scale: 0.95, y: 20 }} animate={{ scale: 1, y: 0 }} className="bg-slate-900 w-full max-w-6xl h-[90vh] rounded-[2.5rem] border border-slate-800 shadow-2xl flex flex-col overflow-hidden">
         
         <div className="flex h-full">
           {/* Categorías Sidebar */}
@@ -76,8 +102,8 @@ export default function AdminPanel({ onClose, userRole, currentGroupId }: AdminP
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 bg-gradient-to-br from-amber-500 to-amber-700 rounded-2xl flex items-center justify-center shadow-xl shadow-amber-900/40"><Shield className="text-white w-6 h-6"/></div>
               <div className="hidden sm:block">
-                  <p className="font-black text-slate-100 tracking-tighter text-xl">CENTRAL</p>
-                  <p className="text-[10px] text-amber-500 font-bold uppercase tracking-widest">Panel de Control</p>
+                  <p className="font-black text-slate-100 tracking-tighter text-xl leading-none">CENTRAL</p>
+                  <p className="text-[10px] text-amber-500 font-bold uppercase tracking-widest mt-1">Operaciones Pro</p>
               </div>
             </div>
             
@@ -91,15 +117,21 @@ export default function AdminPanel({ onClose, userRole, currentGroupId }: AdminP
                 <span className="hidden sm:block font-extrabold">PERSONAL</span>
               </button>
               {isSuperAdmin && (
-                <button onClick={() => setActiveTab('monitor')} className={cn("p-4 rounded-2xl flex items-center gap-4 transition-all group", activeTab === 'monitor' ? "bg-red-600 text-white shadow-lg shadow-red-900/30" : "text-slate-400 hover:bg-slate-800")}>
-                  <Star className={cn("w-6 h-6", activeTab === 'monitor' ? "" : "group-hover:text-red-400")}/> 
-                  <span className="hidden sm:block font-extrabold">MONITOREO</span>
-                </button>
+                <>
+                  <button onClick={() => setActiveTab('monitor')} className={cn("p-4 rounded-2xl flex items-center gap-4 transition-all group", activeTab === 'monitor' ? "bg-red-600 text-white shadow-lg shadow-red-900/30" : "text-slate-400 hover:bg-slate-800")}>
+                    <Star className={cn("w-6 h-6", activeTab === 'monitor' ? "" : "group-hover:text-red-400")}/> 
+                    <span className="hidden sm:block font-extrabold">RADAR</span>
+                  </button>
+                  <button onClick={() => setActiveTab('recordings')} className={cn("p-4 rounded-2xl flex items-center gap-4 transition-all group", activeTab === 'recordings' ? "bg-green-600 text-white shadow-lg shadow-green-900/30" : "text-slate-400 hover:bg-slate-800")}>
+                    <History className={cn("w-6 h-6", activeTab === 'recordings' ? "" : "group-hover:text-green-400")}/> 
+                    <span className="hidden sm:block font-extrabold">EVIDENCIAS</span>
+                  </button>
+                </>
               )}
             </nav>
 
-            <button onClick={onClose} className="mt-auto p-5 rounded-2xl bg-slate-800 border border-slate-700 text-slate-300 hover:bg-slate-700 transition-all flex items-center justify-center gap-3 font-black text-sm">
-              <X className="w-5 h-5"/> <span className="hidden sm:block">SOLTAR PANEL</span>
+            <button onClick={onClose} className="mt-auto p-5 rounded-2xl bg-slate-800 border border-slate-700 text-slate-300 hover:bg-slate-700 transition-all flex items-center justify-center gap-3 font-black text-sm uppercase tracking-tighter">
+              <X className="w-5 h-5"/> <span className="hidden sm:block">CERRAR PANEL</span>
             </button>
           </div>
 
@@ -112,16 +144,16 @@ export default function AdminPanel({ onClose, userRole, currentGroupId }: AdminP
                         <section className="space-y-6">
                             <div className="flex items-center gap-3 border-b border-slate-800 pb-4">
                                 <FolderPlus className="text-blue-500 w-6 h-6"/>
-                                <h2 className="text-3xl font-black text-white italic tracking-tight">ALTA DE CANALES</h2>
+                                <h2 className="text-3xl font-black text-white italic tracking-tight uppercase">GESTIÓN DE CANALES</h2>
                             </div>
                             <div className="flex gap-4 p-6 glass rounded-[2rem] border-blue-500/20">
-                                <input type="text" placeholder="Ej: CENTRAL DE DESPACHO / CAMIÓN 1" value={newGroupName} onChange={e => setNewGroupName(e.target.value)} className="flex-1 p-5 bg-slate-900/50 border border-slate-800 rounded-2xl outline-none focus:border-blue-500 font-bold" />
-                                <button onClick={handleCreateGroup} className="px-10 bg-blue-600 text-white font-black rounded-2xl hover:bg-blue-500 shadow-lg shadow-blue-900/40 transition-all active:scale-95">CREAR</button>
+                                <input type="text" placeholder="NOMBRE DEL NUEVO GRUPO..." value={newGroupName} onChange={e => setNewGroupName(e.target.value)} className="flex-1 p-5 bg-slate-900/50 border border-slate-800 rounded-2xl outline-none focus:border-blue-500 font-bold" />
+                                <button onClick={handleCreateGroup} className="px-10 bg-blue-600 text-white font-black rounded-2xl hover:bg-blue-500 shadow-lg shadow-blue-900/40 transition-all active:scale-95">CREAR GRUPO</button>
                             </div>
                         </section>
 
                         <section className="space-y-6">
-                           <h3 className="text-xs font-black text-slate-500 uppercase tracking-[0.3em]">Registro Histórico de Grupos</h3>
+                           <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.4em] pl-2">Listado de Grupos Activos</h3>
                            <div className="grid gap-4">
                               {visibleGroups.map(g => (
                                 <div key={g.id} className="p-6 glass rounded-2xl flex items-center justify-between group hover:bg-slate-800/40 border-slate-800/50 transition-all">
@@ -159,26 +191,26 @@ export default function AdminPanel({ onClose, userRole, currentGroupId }: AdminP
                         <section className="space-y-6">
                             <div className="flex items-center gap-3 border-b border-slate-800 pb-4">
                                 <UserPlus className="text-blue-500 w-6 h-6"/>
-                                <h2 className="text-3xl font-black text-white italic tracking-tight">AUTORIZAR PERSONAL</h2>
+                                <h2 className="text-3xl font-black text-white italic tracking-tight uppercase">REGISTRO DE PERSONAL</h2>
                             </div>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-8 glass rounded-[2.5rem] border-blue-500/10">
-                                <input type="email" placeholder="Correo Electrónico Válido" value={newUserEmail} onChange={e => setNewUserEmail(e.target.value)} className="p-5 bg-slate-900/50 border border-slate-800 rounded-2xl outline-none focus:border-blue-500 font-bold" />
-                                <input type="text" placeholder="Nombre y Apellido" value={newUserDisplay} onChange={e => setNewUserDisplay(e.target.value)} className="p-5 bg-slate-900/50 border border-slate-800 rounded-2xl outline-none focus:border-blue-500 font-bold" />
-                                <select value={newUserRole} onChange={e => setNewUserRole(e.target.value as UserRole)} className="p-5 bg-slate-900/50 border border-slate-800 rounded-2xl text-slate-400 font-bold">
+                                <input type="email" placeholder="CORREO ELECTRÓNICO..." value={newUserEmail} onChange={e => setNewUserEmail(e.target.value)} className="p-5 bg-slate-900/50 border border-slate-800 rounded-2xl outline-none focus:border-blue-500 font-bold" />
+                                <input type="text" placeholder="NOMBRE DE USUARIO..." value={newUserDisplay} onChange={e => setNewUserDisplay(e.target.value)} className="p-5 bg-slate-900/50 border border-slate-800 rounded-2xl outline-none focus:border-blue-500 font-bold" />
+                                <select value={newUserRole} onChange={e => setNewUserRole(e.target.value as UserRole)} className="p-5 bg-slate-900/50 border border-slate-800 rounded-2xl text-slate-400 font-bold outline-none cursor-pointer">
                                    <option value={UserRole.USUARIO}>OPERADOR ESTÁNDAR</option>
                                    <option value={UserRole.ADMIN2}>ADMINISTRADOR SECUNDARIO</option>
                                    {isSuperAdmin && <option value={UserRole.ADMIN}>ADMINISTRADOR MAESTRO</option>}
                                 </select>
-                                <select value={newUserGroup} onChange={e => setNewUserGroup(e.target.value)} className="p-5 bg-slate-900/50 border border-slate-800 rounded-2xl text-slate-400 font-bold">
-                                   <option value="">ASIGNAR CANAL...</option>
+                                <select value={newUserGroup} onChange={e => setNewUserGroup(e.target.value)} className="p-5 bg-slate-900/50 border border-slate-800 rounded-2xl text-slate-400 font-bold outline-none cursor-pointer">
+                                   <option value="">CANAL ASIGNADO...</option>
                                    {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
                                 </select>
-                                <button onClick={handleRegisterUser} className="sm:col-span-2 py-5 bg-blue-600 text-white font-black rounded-2xl hover:bg-blue-500 shadow-xl shadow-blue-900/30 active:scale-95 transition-all uppercase tracking-widest mt-2">REGISTRAR EN BASE DE DATOS</button>
+                                <button onClick={handleRegisterUser} className="sm:col-span-2 py-5 bg-blue-600 text-white font-black rounded-2xl hover:bg-blue-500 shadow-xl shadow-blue-900/30 active:scale-95 transition-all uppercase tracking-widest mt-2">ALTA DE OPERADOR</button>
                             </div>
                         </section>
 
                         <section className="space-y-6">
-                           <h3 className="text-xs font-black text-slate-500 uppercase tracking-[0.3em]">Directorio de Personal Vigente</h3>
+                           <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.4em] pl-2">Personal Activo en Base</h3>
                            <div className="grid gap-4">
                               {visibleUsers.map(u => (
                                 <div key={u.uid} className="p-6 glass rounded-2xl flex items-center justify-between group hover:bg-slate-800/40 border-slate-800/50 transition-all">
@@ -224,15 +256,63 @@ export default function AdminPanel({ onClose, userRole, currentGroupId }: AdminP
                      </motion.div>
                    )}
 
+                   {activeTab === 'recordings' && (
+                     <motion.div key="recordings" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-10">
+                        <section className="space-y-6">
+                            <div className="flex items-center gap-3 border-b border-slate-800 pb-4">
+                                <History className="text-green-500 w-8 h-8"/>
+                                <h2 className="text-3xl font-black text-white italic tracking-tight uppercase">EVIDENCIAS DE AUDIO</h2>
+                            </div>
+                            
+                            <div className="grid gap-4">
+                                {recordings.length === 0 ? (
+                                    <div className="p-20 text-center glass rounded-[3rem] border-white/5">
+                                        <FileAudio className="w-20 h-20 text-slate-700 mx-auto mb-4 opacity-50"/>
+                                        <p className="text-slate-500 font-black uppercase tracking-[0.2em]">No hay grabaciones recientes</p>
+                                    </div>
+                                ) : (
+                                    recordings.map(r => (
+                                        <div key={r.filename} className="p-6 glass rounded-2xl flex items-center justify-between group hover:bg-slate-800/40 border-slate-800/50 transition-all border-l-[6px] border-l-green-500/40">
+                                            <div className="flex items-center gap-5">
+                                                <div className="w-12 h-12 bg-green-500/10 rounded-xl flex items-center justify-center">
+                                                    <FileAudio className="text-green-500 w-6 h-6"/>
+                                                </div>
+                                                <div>
+                                                    <p className="font-black text-slate-100 uppercase text-sm tracking-tight">{r.displayName}</p>
+                                                    <div className="flex items-center gap-3 mt-1">
+                                                        <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">{new Date(r.timestamp).toLocaleString()}</p>
+                                                        <span className="w-1 h-1 bg-slate-700 rounded-full"/>
+                                                        <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Canal: {groups.find(g => g.id === r.groupId)?.name || 'Desconocido'}</p>
+                                                        <span className="w-1 h-1 bg-slate-700 rounded-full"/>
+                                                        <p className="text-[10px] text-green-500/70 font-bold uppercase tracking-widest">{(r.size / 1024 / 1024).toFixed(2)} MB</p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div className="flex gap-2">
+                                                <button onClick={() => handleDownload(r.filename)} className="p-3 bg-slate-800 hover:bg-green-600 text-white rounded-xl transition-all shadow-lg flex items-center gap-2">
+                                                    <Download className="w-5 h-5"/>
+                                                </button>
+                                                <button onClick={() => handleDeleteRecording(r.filename)} className="p-3 bg-slate-800 hover:bg-red-600 text-white rounded-xl transition-all shadow-lg">
+                                                    <Trash2 className="w-5 h-5"/>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                        </section>
+                     </motion.div>
+                   )}
+
                    {activeTab === 'monitor' && (
                      <motion.div key="monitor" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-10">
                         <div className="p-10 bg-gradient-to-r from-red-600/20 to-transparent border border-red-500/20 rounded-[3rem] relative overflow-hidden">
                            <div className="relative z-10 space-y-4">
                               <div className="flex items-center gap-4 text-red-500">
                                  <Shield className="w-8 h-8 animate-pulse"/>
-                                 <h2 className="text-4xl font-black italic tracking-tighter">RED ALPHA-1</h2>
+                                 <h2 className="text-4xl font-black italic tracking-tighter">CENTRO DE INTERCEPTACIÓN</h2>
                               </div>
-                              <p className="max-w-md text-xs text-slate-400 font-bold leading-relaxed opacity-70">SISTEMA DE INTERCEPTACIÓN Y APOYO GLOBAL. TODOS LOS CANALES ESTÁN SIENDO ENRUTADOS PARA SU MONITOREO CENTRALIZADO.</p>
+                              <p className="max-w-md text-[10px] text-slate-400 font-bold leading-relaxed opacity-70 tracking-widest uppercase">ESTADO DE ESCUCHA ACTIVA SOBRE TODOS LOS GRUPOS DEL SISTEMA. MONITOREO DE ALTA DISPONIBILIDAD ALPHA-1.</p>
                            </div>
                            <div className="absolute right-0 top-0 bottom-0 w-64 bg-slate-800/10 -skew-x-12 translate-x-32"/>
                         </div>
@@ -245,9 +325,8 @@ export default function AdminPanel({ onClose, userRole, currentGroupId }: AdminP
                                       <div className="w-2 h-2 bg-red-500 rounded-full animate-ping"/>
                                       <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.3em]">Operativo</p>
                                    </div>
-                                   <p className="text-2xl font-black text-slate-100 tracking-tighter italic">{g.name}</p>
+                                   <p className="text-2xl font-black text-slate-100 tracking-tighter italic uppercase">{g.name}</p>
                                 </div>
-                                <button className="px-6 py-3 bg-red-600/10 text-red-500 font-black text-[10px] uppercase rounded-full border border-red-600/30 hover:bg-red-600 hover:text-white transition-all tracking-widest active:scale-95">CONECTAR</button>
                              </div>
                            ))}
                         </div>

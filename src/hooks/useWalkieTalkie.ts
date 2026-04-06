@@ -80,13 +80,26 @@ export const useWalkieTalkie = (groupId: string | null, onNewRecording?: (record
 
   const appendToBuffer = () => {
     const sb = sourceBufferRef.current;
+    const ms = mediaSourceRef.current;
+
+    // Si el MediaSource se cerró inesperadamente, reiniciar
+    if (ms && ms.readyState === 'closed' && queueRef.current.length > 0) {
+        initMediaSource();
+        return;
+    }
+
     if (sb && !sb.updating && queueRef.current.length > 0) {
       const chunk = queueRef.current.shift();
       if (chunk) {
         try {
           sb.appendBuffer(chunk);
+          // Forzar play si el audio está pausado pero hay datos entrando
+          if (audioRef.current && audioRef.current.paused) {
+              audioRef.current.play().catch(() => {});
+          }
         } catch (e) {
-          console.error("Error al añadir al buffer:", e);
+          console.error("Error al añadir al buffer, reiniciando MS:", e);
+          initMediaSource(); // Reiniciar ante error de buffer
         }
       }
     }
