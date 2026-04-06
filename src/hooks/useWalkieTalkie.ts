@@ -3,8 +3,24 @@ import { io, Socket } from 'socket.io-client';
 
 const SOCKET_URL = 'https://llamada-urgente-2.onrender.com';
 
-// MIME Type universal para Android 8+ y Web
-const MIME_TYPE = 'audio/webm;codecs=opus';
+// Función para detectar el mejor códec disponible
+const getSupportedMimeType = () => {
+  const types = [
+    'audio/webm;codecs=opus',
+    'audio/webm',
+    'audio/ogg;codecs=opus',
+    'audio/aac',
+    'audio/wav'
+  ];
+  for (const type of types) {
+    if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(type)) {
+      return type;
+    }
+  }
+  return '';
+};
+
+const MIME_TYPE = getSupportedMimeType();
 
 export const useWalkieTalkie = (groupId: string | null, onNewRecording?: (recording: any) => void) => {
   const [isConnected, setIsConnected] = useState(false);
@@ -30,7 +46,8 @@ export const useWalkieTalkie = (groupId: string | null, onNewRecording?: (record
         transports: ['websocket'], 
         reconnection: true,
         reconnectionAttempts: Infinity,
-        reconnectionDelay: 1000
+        reconnectionDelay: 1000,
+        timeout: 10000
     });
     socketRef.current = socket;
 
@@ -40,11 +57,15 @@ export const useWalkieTalkie = (groupId: string | null, onNewRecording?: (record
       socket.emit('join-group', groupId); 
     });
     
-    socket.on('disconnect', () => setIsConnected(false));
+    socket.on('disconnect', () => {
+        setIsConnected(false);
+        // Reconectar si el grupo aún es válido (Modo Supervivencia)
+        if (groupId) setTimeout(() => socket.connect(), 1000);
+    });
 
     // LÓGICA DE RECIBIR AUDIO EN TIEMPO REAL
     socket.on('audio-receive', async ({ data, groupId: incomingGroupId }) => {
-      if (!data || data.byteLength === 0) return; // Ignorar paquetes vacíos que traban la UI
+      if (!data || data.byteLength === 0) return; 
 
       // Monitoreo Global
       if (groupId === 'all' && incomingGroupId) {
@@ -53,9 +74,8 @@ export const useWalkieTalkie = (groupId: string | null, onNewRecording?: (record
 
       setIsReceiving(true);
       
-      // Control de parpadeo (Heartbeat)
       if (receivingTimeoutRef.current) clearTimeout(receivingTimeoutRef.current);
-      receivingTimeoutRef.current = setTimeout(() => setIsReceiving(false), 1200);
+      receivingTimeoutRef.current = setTimeout(() => setIsReceiving(false), 1500);
 
       if (!mediaSourceRef.current || mediaSourceRef.current.readyState !== 'open') initMediaSource();
       queueRef.current.push(data);
@@ -75,16 +95,22 @@ export const useWalkieTalkie = (groupId: string | null, onNewRecording?: (record
     mediaSourceRef.current = ms;
     if (audioRef.current) {
         audioRef.current.src = URL.createObjectURL(ms);
-        audioRef.current.play().catch(e => console.log("Interacción requerida para audio"));
+        audioRef.current.play().catch(() => {
+            // Silencio: El sistema espera interacción
+        });
     }
 
     ms.addEventListener('sourceopen', () => {
-      if (MediaSource.isTypeSupported(MIME_TYPE)) {
-        const sb = ms.addSourceBuffer(MIME_TYPE);
-        sourceBufferRef.current = sb;
-        sb.addEventListener('updateend', appendToBuffer);
+      if (MIME_TYPE && MediaSource.isTypeSupported(MIME_TYPE)) {
+        try {
+          const sb = ms.addSourceBuffer(MIME_TYPE);
+          sourceBufferRef.current = sb;
+          sb.addEventListener('updateend', appendToBuffer);
+        } catch (e) {
+          console.error("Error addSourceBuffer:", e);
+        }
       } else {
-        console.error("MIME type no soportado:", MIME_TYPE);
+        console.error("MIME type NO soportado para reproducción:", MIME_TYPE);
       }
     });
   };
@@ -93,7 +119,6 @@ export const useWalkieTalkie = (groupId: string | null, onNewRecording?: (record
     const sb = sourceBufferRef.current;
     const ms = mediaSourceRef.current;
 
-    // Si el MediaSource se cerró inesperadamente, reiniciar
     if (ms && ms.readyState === 'closed' && queueRef.current.length > 0) {
         initMediaSource();
         return;
@@ -104,13 +129,11 @@ export const useWalkieTalkie = (groupId: string | null, onNewRecording?: (record
       if (chunk) {
         try {
           sb.appendBuffer(chunk);
-          // Forzar play si el audio está pausado pero hay datos entrando
           if (audioRef.current && audioRef.current.paused) {
               audioRef.current.play().catch(() => {});
           }
         } catch (e) {
-          console.error("Error al añadir al buffer, reiniciando MS:", e);
-          initMediaSource(); // Reiniciar ante error de buffer
+          initMediaSource(); 
         }
       }
     }
@@ -129,8 +152,8 @@ export const useWalkieTalkie = (groupId: string | null, onNewRecording?: (record
       const gain = ctx.createGain();
       osc.type = 'sine';
       osc.frequency.setValueAtTime(freq, ctx.currentTime);
-      gain.gain.setValueAtTime(0.1, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + duration);
+      gain.gain.setValueAtTime(0.05, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
       osc.connect(gain);
       gain.connect(ctx.destination);
       osc.start();
@@ -142,11 +165,14 @@ export const useWalkieTalkie = (groupId: string | null, onNewRecording?: (record
     const targetGroupId = overrideGroupId || groupId;
     if (!socketRef.current?.connected || !targetGroupId || isTalking) return;
     
-    // Tono de inicio (Agudo)
+    // Auto-activar audio al hablar
+    if (audioRef.current) audioRef.current.play().catch(() => {});
+
     playTone(880, 0.1);
 
     navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
-      const mediaRecorder = new MediaRecorder(stream, { mimeType: MIME_TYPE });
+      const options = MIME_TYPE ? { mimeType: MIME_TYPE } : {};
+      const mediaRecorder = new MediaRecorder(stream, options);
       mediaRecorderRef.current = mediaRecorder;
       
       mediaRecorder.ondataavailable = (event) => {
@@ -161,8 +187,7 @@ export const useWalkieTalkie = (groupId: string | null, onNewRecording?: (record
       setIsTalking(true);
       socketRef.current?.emit('audio-start', { groupId: targetGroupId, userId, displayName });
     }).catch(e => {
-        console.error("Error micro:", e);
-        setError('Permiso denegado de micrófono');
+        setError('Error: Active micrófono en ajustes');
     });
   }, [groupId, isTalking]);
 
@@ -173,10 +198,7 @@ export const useWalkieTalkie = (groupId: string | null, onNewRecording?: (record
       mediaRecorderRef.current = null;
     }
 
-    // Tono de fin (Grave doble)
     playTone(440, 0.08);
-    setTimeout(() => playTone(440, 0.08), 120);
-
     setIsTalking(false);
     socketRef.current?.emit('audio-end', { groupId });
   }, [groupId]);
@@ -186,12 +208,8 @@ export const useWalkieTalkie = (groupId: string | null, onNewRecording?: (record
     audio.autoplay = true;
     audioRef.current = audio;
     
-    // Al limpiar, desconectar y liberar recursos
     return () => { 
         disconnect();
-        if (mediaSourceRef.current) {
-            try { mediaSourceRef.current.endOfStream(); } catch(e) {}
-        }
     };
   }, [disconnect]);
 

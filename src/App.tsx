@@ -82,8 +82,8 @@ export default function App() {
           await ForegroundService.requestPermissions();
           await ForegroundService.start({ 
             id: 101, 
-            title: isMonitoringAll ? 'MODO MONITOR ACTIVO' : 'CONEXIÓN ESTABLE - COE MC', 
-            body: 'Canal: ' + (userGroupName || 'Principal'), 
+            title: 'SISTEMA COE MC - RADIO ACTIVA', 
+            body: isMonitoringAll ? 'Escuchando TODOS los grupos' : `Canal: ${userGroupName || 'Principal'}`, 
             importance: 5,
             smallIcon: 'ic_stat_radio'
           });
@@ -96,7 +96,6 @@ export default function App() {
   // ESCUCHA DE BOTONES FÍSICOS (RADIOS POC / VOLUMEN)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Mapear Vol+ o Vol- para PTT si el usuario está en la app
       if ((e.key === 'VolumeUp' || e.key === 'VolumeDown') && isConnected && !isTransmitting) {
         e.preventDefault();
         handleToggleTalk();
@@ -108,7 +107,6 @@ export default function App() {
         handleToggleTalk();
       }
     };
-
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
     return () => {
@@ -117,17 +115,10 @@ export default function App() {
     };
   }, [isConnected, isTransmitting, talkMode, activeGroupId]);
 
-  const unlockAudio = () => {
-    const audio = document.querySelector('audio');
-    if (audio) {
-        audio.play().catch(() => {});
-        setAudioUnlocked(true);
-    }
-  };
-
   const handleToggleTalk = async () => {
-    unlockAudio();
     if (!isConnected || !user) return;
+    const audio = document.querySelector('audio');
+    if (audio) audio.play().catch(() => {});
 
     if (!isTransmitting) {
       setIsTransmitting(true);
@@ -249,12 +240,6 @@ export default function App() {
       {/* COLUMNA CENTRAL: CONSOLA TÁCTICA */}
       <div className="flex-1 flex flex-col p-4 sm:p-8 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-slate-900 via-slate-950 to-slate-950 relative">
         
-        {!audioUnlocked && isConnected && (
-            <button onClick={unlockAudio} className="absolute top-4 left-1/2 -translate-x-1/2 z-[100] bg-red-600 text-white px-6 py-2 rounded-full font-black text-xs animate-bounce shadow-2xl flex items-center gap-2">
-                <VolumeX className="w-4 h-4"/> CLICK PARA ACTIVAR AUDIO
-            </button>
-        )}
-
         {/* Status Header */}
         <div className="flex justify-between items-center mb-6 glass p-3 px-5 rounded-3xl shrink-0">
           <div className="flex items-center gap-3">
@@ -357,15 +342,14 @@ export default function App() {
                     )}
                 </button>
 
-                {/* Receptor Status */}
+                {/* Receptor Status (Discreto) */}
                 <AnimatePresence>
                     {(isReceiving || monitoringGroup) && (
-                        <motion.div initial={{ y: 30, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 30, opacity: 0 }} className="absolute -bottom-24 left-1/2 -translate-x-1/2 glass px-12 py-6 rounded-[2.5rem] flex flex-col items-center gap-1 border-green-500/50 shadow-[0_20px_50px_rgba(0,0,0,0.5)] min-w-[320px]">
-                            <div className="flex items-center gap-4">
-                                <Volume2 className="text-green-500 w-6 h-6 animate-bounce" />
-                                <p className="text-[16px] font-black text-white uppercase tracking-[0.2em]">AUDIO ENTRANTE</p>
+                        <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.8, opacity: 0 }} className="absolute -bottom-16 left-1/2 -translate-x-1/2 flex flex-col items-center gap-1 z-30">
+                            <div className="flex items-center gap-2 bg-red-600/20 px-4 py-2 rounded-full border border-red-500/30">
+                                <Volume2 className="text-red-500 w-4 h-4 animate-pulse" />
+                                <p className="text-[10px] font-black text-white uppercase tracking-widest">TRANSMITIENDO: {isMonitoringAll ? monitoringGroup : (talkingUser?.displayName || "RADIO")}</p>
                             </div>
-                            <p className="text-[12px] font-black text-green-500 uppercase mt-1">{isMonitoringAll ? `GRUPO: ${monitoringGroup}` : (talkingUser?.displayName || "RADIOFRECUENCIA")}</p>
                         </motion.div>
                     )}
                 </AnimatePresence>
