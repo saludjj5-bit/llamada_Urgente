@@ -111,10 +111,29 @@ export const useWalkieTalkie = (groupId: string | null, onNewRecording?: (record
     setIsTalking(false);
   }, []);
 
+  const playTone = (freq: number, duration: number) => {
+    try {
+      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, ctx.currentTime);
+      gain.gain.setValueAtTime(0.1, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + duration);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + duration);
+    } catch (e) {}
+  };
+
   const startTalking = useCallback((userId: string, displayName: string, overrideGroupId?: string) => {
     const targetGroupId = overrideGroupId || groupId;
     if (!socketRef.current?.connected || !targetGroupId || isTalking) return;
     
+    // Tono de inicio (Agudo)
+    playTone(880, 0.1);
+
     navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
       const mediaRecorder = new MediaRecorder(stream, { mimeType: MIME_TYPE });
       mediaRecorderRef.current = mediaRecorder;
@@ -142,6 +161,11 @@ export const useWalkieTalkie = (groupId: string | null, onNewRecording?: (record
       mediaRecorderRef.current.stream.getTracks().forEach(t => t.stop());
       mediaRecorderRef.current = null;
     }
+
+    // Tono de fin (Grave doble)
+    playTone(440, 0.08);
+    setTimeout(() => playTone(440, 0.08), 120);
+
     setIsTalking(false);
     socketRef.current?.emit('audio-end', { groupId });
   }, [groupId]);

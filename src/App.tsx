@@ -93,6 +93,30 @@ export default function App() {
     manageForeground();
   }, [isConnected, userGroupName, isMonitoringAll]);
 
+  // ESCUCHA DE BOTONES FÍSICOS (RADIOS POC / VOLUMEN)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Mapear Vol+ o Vol- para PTT si el usuario está en la app
+      if ((e.key === 'VolumeUp' || e.key === 'VolumeDown') && isConnected && !isTransmitting) {
+        e.preventDefault();
+        handleToggleTalk();
+      }
+    };
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if ((e.key === 'VolumeUp' || e.key === 'VolumeDown') && isTransmitting) {
+        e.preventDefault();
+        handleToggleTalk();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, [isConnected, isTransmitting, talkMode, activeGroupId]);
+
   const unlockAudio = () => {
     const audio = document.querySelector('audio');
     if (audio) {
@@ -352,7 +376,10 @@ export default function App() {
         <div className="py-6 text-center flex items-center justify-between px-4 border-t border-slate-900 mt-auto">
             <div className="flex items-center gap-3">
                 <ShieldCheck className="w-4 h-4 text-green-500/50"/>
-                <p className="text-[9px] text-slate-700 font-bold tracking-[0.3em] uppercase hidden sm:block">ENCRYPTED COMM • VERSION 5.0 PRO</p>
+                <p className="text-[9px] text-slate-700 font-bold tracking-[0.3em] uppercase hidden sm:block">ENCRYPTED COMM • VERSION 6.0 PRO</p>
+            </div>
+            <div className="flex flex-col items-center">
+                <p className="text-[10px] text-slate-500 font-black tracking-widest uppercase">2026 - CELULAR 921873749</p>
             </div>
             <div className="flex items-center gap-6">
                 <div className="flex items-center gap-2"><div className="w-1.5 h-1.5 bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.8)] rounded-full"/><span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">AES-SECURE</span></div>

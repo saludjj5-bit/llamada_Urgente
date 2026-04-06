@@ -264,37 +264,53 @@ export default function AdminPanel({ onClose, userRole, currentGroupId }: AdminP
                                 <h2 className="text-3xl font-black text-white italic tracking-tight uppercase">EVIDENCIAS DE AUDIO</h2>
                             </div>
                             
-                            <div className="grid gap-4">
+                            <div className="space-y-8">
                                 {recordings.length === 0 ? (
                                     <div className="p-20 text-center glass rounded-[3rem] border-white/5">
                                         <FileAudio className="w-20 h-20 text-slate-700 mx-auto mb-4 opacity-50"/>
                                         <p className="text-slate-500 font-black uppercase tracking-[0.2em]">No hay grabaciones recientes</p>
                                     </div>
                                 ) : (
-                                    recordings.map(r => (
-                                        <div key={r.filename} className="p-6 glass rounded-2xl flex items-center justify-between group hover:bg-slate-800/40 border-slate-800/50 transition-all border-l-[6px] border-l-green-500/40">
-                                            <div className="flex items-center gap-5">
-                                                <div className="w-12 h-12 bg-green-500/10 rounded-xl flex items-center justify-center">
-                                                    <FileAudio className="text-green-500 w-6 h-6"/>
-                                                </div>
-                                                <div>
-                                                    <p className="font-black text-slate-100 uppercase text-sm tracking-tight">{r.displayName}</p>
-                                                    <div className="flex items-center gap-3 mt-1">
-                                                        <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">{new Date(r.timestamp).toLocaleString()}</p>
-                                                        <span className="w-1 h-1 bg-slate-700 rounded-full"/>
-                                                        <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Canal: {groups.find(g => g.id === r.groupId)?.name || 'Desconocido'}</p>
-                                                        <span className="w-1 h-1 bg-slate-700 rounded-full"/>
-                                                        <p className="text-[10px] text-green-500/70 font-bold uppercase tracking-widest">{(r.size / 1024 / 1024).toFixed(2)} MB</p>
-                                                    </div>
-                                                </div>
+                                    // Agrupar por canal
+                                    Object.entries(
+                                        recordings.reduce((acc: any, rec: any) => {
+                                            const gName = groups.find(g => g.id === rec.groupId)?.name || 'Canal Desconocido';
+                                            if (!acc[gName]) acc[gName] = [];
+                                            acc[gName].push(rec);
+                                            return acc;
+                                        }, {})
+                                    ).map(([groupName, groupRecs]: [string, any]) => (
+                                        <div key={groupName} className="space-y-4">
+                                            <div className="flex items-center gap-3 px-4 py-2 bg-slate-800/30 rounded-xl border border-white/5 w-fit">
+                                                <div className="w-2 h-2 bg-green-500 rounded-full shadow-[0_0_8px_rgba(34,197,94,0.8)]"/>
+                                                <h3 className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em]">{groupName} ({groupRecs.length})</h3>
                                             </div>
-                                            <div className="flex gap-2">
-                                                <button onClick={() => handleDownload(r.filename)} className="p-3 bg-slate-800 hover:bg-green-600 text-white rounded-xl transition-all shadow-lg flex items-center gap-2">
-                                                    <Download className="w-5 h-5"/>
-                                                </button>
-                                                <button onClick={() => handleDeleteRecording(r.filename)} className="p-3 bg-slate-800 hover:bg-red-600 text-white rounded-xl transition-all shadow-lg">
-                                                    <Trash2 className="w-5 h-5"/>
-                                                </button>
+                                            <div className="grid gap-3">
+                                                {groupRecs.map((r: any) => (
+                                                    <div key={r.filename} className="p-5 glass rounded-2xl flex items-center justify-between group hover:bg-slate-800/40 border-slate-800/50 transition-all border-l-[4px] border-l-green-500/40">
+                                                        <div className="flex items-center gap-4">
+                                                            <div className="w-10 h-10 bg-green-500/10 rounded-xl flex items-center justify-center">
+                                                                <FileAudio className="text-green-500 w-5 h-5"/>
+                                                            </div>
+                                                            <div>
+                                                                <p className="font-black text-slate-100 uppercase text-[12px] tracking-tight">{r.displayName}</p>
+                                                                <div className="flex items-center gap-3 mt-1">
+                                                                    <p className="text-[9px] text-slate-500 font-bold uppercase tracking-widest">{new Date(r.timestamp).toLocaleString()}</p>
+                                                                    <span className="w-1 h-1 bg-slate-700 rounded-full"/>
+                                                                    <p className="text-[9px] text-green-500/70 font-bold uppercase tracking-widest">{(r.size / 1024 / 1024).toFixed(2)} MB</p>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex gap-2">
+                                                            <button onClick={() => handleDownload(r.filename)} className="p-2 sm:p-3 bg-slate-800 hover:bg-green-600 text-white rounded-xl transition-all shadow-lg flex items-center gap-2">
+                                                                <Download className="w-4 h-4 sm:w-5 h-5"/>
+                                                            </button>
+                                                            <button onClick={() => handleDeleteRecording(r.filename)} className="p-2 sm:p-3 bg-slate-800 hover:bg-red-600 text-white rounded-xl transition-all shadow-lg">
+                                                                <Trash2 className="w-4 h-4 sm:w-5 h-5"/>
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                ))}
                                             </div>
                                         </div>
                                     ))
