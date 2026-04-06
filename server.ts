@@ -91,7 +91,9 @@ async function startServer() {
     
     socket.on("join-group", (groupId) => { 
       socket.join(groupId); 
-      console.log(`Socket ${socket.id} unido a grupo: ${groupId}`);
+      // Si el groupId parece un UID de Firebase (o es el propio del usuario), 
+      // esto permite comunicaciones privadas 1 a 1.
+      console.log(`Socket ${socket.id} unido a sala: ${groupId}`);
     });
     
     socket.on("audio-start", ({ groupId, userId, displayName }) => { 

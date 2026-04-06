@@ -24,6 +24,12 @@
 
         </activity>
 
+        <service
+            android:name="io.capawesome.capacitor.androidforegroundservice.AndroidForegroundService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
